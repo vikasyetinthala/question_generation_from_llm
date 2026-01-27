@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: question-generator-api
+    env: docker
+    plan: free
+    branch: main
+    buildCommand: docker build -t question-generator .
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        scope: run
+        sync: false
