@@ -11,10 +11,10 @@ from src.config import (
     MAX_DOCUMENT_LENGTH, MIN_DOCUMENT_LENGTH
 )
 from src.utils import (
-    validate_file, validate_num_questions, parse_mcqs, parse_questions
+    validate_file, validate_num_questions, parse_mcqs, parse_questions, parse_fill_in_the_blanks
 )
 from src.services import DocumentProcessor, LLMService
-from src.api.schemas import MCQResponse, QuestionsResponse, HealthResponse, APIInfo
+from src.api.schemas import MCQResponse, QuestionsResponse, FillInTheBlanksResponse, HealthResponse, APIInfo
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -85,6 +85,20 @@ async def info():
                 "response": {
                     "status": "success/error",
                     "questions": "Array of question objects"
+                }
+            },
+            "POST /generate-fill-in-the-blanks": {
+                "description": "Generate fill-in-the-blanks questions from a Word document",
+                "request_headers": {
+                    "groq_api_key": "Your Groq API Key (required)"
+                },
+                "request_body": {
+                    "file": "Word document (.docx file)",
+                    "num_questions": f"Number of questions ({MIN_QUESTIONS}-{MAX_QUESTIONS}, default: {DEFAULT_QUESTIONS})"
+                },
+                "response": {
+                    "status": "success/error",
+                    "questions": "Array of fill-in-the-blank objects with question, blank_answer, and context"
                 }
             },
             "GET /health": "Check if API is running",
@@ -219,4 +233,73 @@ async def generate_questions(
         raise HTTPException(
             status_code=500,
             detail=f"Error generating questions: {str(e)}"
+        )
+
+
+# ============================================================================
+# FILL IN THE BLANKS ENDPOINT
+# ============================================================================
+
+@app.post("/generate-fill-in-the-blanks", response_model=FillInTheBlanksResponse, tags=["generation"])
+async def generate_fill_in_the_blanks(
+    file: UploadFile = File(...),
+    groq_api_key: str = Header(...),
+    num_questions: int = DEFAULT_QUESTIONS
+):
+    """
+    Generate fill-in-the-blanks questions from a document.
+    
+    **Parameters:**
+    - **file**: Document file (.docx or .pdf) - required
+    - **groq_api_key**: Your Groq API Key passed in header - required
+    - **num_questions**: Number of questions to generate (1-10, default: 5)
+    
+    **Returns:**
+    - JSON with generated fill-in-the-blanks questions with answers
+    
+    **Example:**
+    ```bash
+    curl -X POST \\
+      -H "groq_api_key: your_key_here" \\
+      -F "file=@document.pdf" \\
+      -F "num_questions=5" \\
+      http://localhost:8000/generate-fill-in-the-blanks
+    ```
+    """
+    try:
+        # Validate inputs
+        validate_file(file.filename, ALLOWED_FILE_TYPES)
+        validate_num_questions(num_questions, MIN_QUESTIONS, MAX_QUESTIONS)
+        
+        # Extract and process document
+        content = await file.read()
+        document_text = doc_processor.extract_text(file.filename, content)
+        
+        # Initialize LLM and generate
+        llm_service = LLMService(groq_api_key)
+        llm_service.initialize()
+        
+        # Truncate document for token limits
+        document_text = doc_processor.truncate_for_llm(document_text, MAX_DOCUMENT_LENGTH)
+        
+        # Generate questions
+        result = llm_service.generate_fill_in_the_blanks(document_text, num_questions)
+        
+        # Parse and structure response
+        blanks = parse_fill_in_the_blanks(result)
+        
+        return JSONResponse({
+            "status": "success",
+            "filename": file.filename,
+            "num_questions_generated": len(blanks),
+            "questions": blanks,
+            "raw_response": result
+        })
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating fill-in-the-blanks: {str(e)}"
         )

@@ -108,6 +108,26 @@ class LLMService:
         
         return result
     
+    def generate_fill_in_the_blanks(self, document_text: str, num_questions: int) -> str:
+        """
+        Generate fill-in-the-blanks questions.
+        
+        Args:
+            document_text: Text from document
+            num_questions: Number of questions to generate
+            
+        Returns:
+            Raw LLM response with generated fill-in-the-blanks questions
+        """
+        chain = self._create_chain(config.FILL_IN_THE_BLANKS_PROMPT_TEMPLATE)
+        
+        result = chain.invoke({
+            "document_text": document_text,
+            "num_questions": num_questions
+        })
+        
+        return result
+    
     def generate_feedback_questions(self, document_text: str, num_questions: int, topic: str) -> str:
         """
         Generate questions focused on a specific topic.

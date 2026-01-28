@@ -58,6 +58,7 @@ STREAMLIT_INITIAL_SIDEBAR_STATE = "expanded"
 # MCQ PROMPT TEMPLATES
 # ============================================================================
 
+
 MCQ_PROMPT_TEMPLATE = """Based on the following document content, generate {num_questions} multiple choice questions that test understanding of the key concepts.
 
 Document:
@@ -85,6 +86,19 @@ Question 1: [Your question here?]
 Answer: [Concise answer]
 
 Make questions clear, specific, and directly related to the document content."""
+
+FILL_IN_THE_BLANKS_PROMPT_TEMPLATE = """Based on the following document content, generate {num_questions} fill-in-the-blanks questions.
+
+Document:
+{document_text}
+
+For each question, create a sentence with a blank (represented by ___) and provide the answer. Generate in this exact format:
+
+Question 1: [Sentence with a blank represented by ___]
+Blank Answer: [The word or phrase that fills the blank]
+Context: [Brief explanation or context]
+
+Repeat this format for all {num_questions} questions. Make sure the blanks are meaningful and test understanding of key concepts. The blank should be significant enough that removing it requires comprehension of the material."""
 
 FEEDBACK_PROMPT_TEMPLATE = """Based on the following document and topic, generate {num_questions} questions.
 

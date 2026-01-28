@@ -60,6 +60,22 @@ class APIInfo(BaseModel):
     endpoints: Dict = Field(..., description="Available endpoints")
 
 
+class FillInTheBlank(BaseModel):
+    """Fill in the Blank Question"""
+    question: str = Field(..., description="Question text with blank (indicated by ___)")
+    blank_answer: str = Field(..., description="Answer for the blank")
+    context: Optional[str] = Field(None, description="Additional context or explanation")
+
+
+class FillInTheBlanksResponse(BaseModel):
+    """API Response for Fill in the Blanks Generation"""
+    status: str = Field(..., description="Status of the request")
+    filename: str = Field(..., description="Name of uploaded file")
+    num_questions_generated: int = Field(..., description="Number of questions generated")
+    questions: List[FillInTheBlank] = Field(..., description="List of generated fill-in-the-blank questions")
+    raw_response: Optional[str] = Field(None, description="Raw response from LLM")
+
+
 class ErrorResponse(BaseModel):
     """Error Response"""
     status: str = Field(default="error", description="Error status")

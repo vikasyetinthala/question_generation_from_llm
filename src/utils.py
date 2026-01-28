@@ -283,6 +283,55 @@ def parse_questions(text: str) -> List[Dict]:
     return questions
 
 
+def parse_fill_in_the_blanks(text: str) -> List[Dict]:
+    """
+    Parse fill-in-the-blanks questions from LLM response.
+    
+    Args:
+        text: Raw LLM response containing fill-in-the-blanks questions
+        
+    Returns:
+        List of dictionaries with questions, answers, and context
+    """
+    blanks = []
+    
+    # Split by question pattern
+    q_splits = re.split(r'Question \d+:', text)
+    
+    for q in q_splits[1:]:  # Skip first empty split
+        lines = q.strip().split('\n')
+        if len(lines) < 2:
+            continue
+        
+        question_text = None
+        blank_answer = None
+        context = None
+        
+        # Parse the lines
+        for line in lines:
+            line_stripped = line.strip()
+            if not line_stripped:
+                continue
+                
+            if question_text is None:
+                # First non-empty line is the question
+                question_text = line_stripped
+            elif line_stripped.lower().startswith('blank answer:'):
+                blank_answer = line_stripped.split(':', 1)[1].strip()
+            elif line_stripped.lower().startswith('context:'):
+                context = line_stripped.split(':', 1)[1].strip()
+        
+        # Only add if required fields are present
+        if question_text and blank_answer:
+            blanks.append({
+                "question": question_text,
+                "blank_answer": blank_answer,
+                "context": context
+            })
+    
+    return blanks
+
+
 # ============================================================================
 # TEXT UTILITIES
 # ============================================================================
