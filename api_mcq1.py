@@ -58,7 +58,7 @@ async def generate_mcqs(
         
         # Extract and process document
         content = await file.read()
-        document_text = extract_text_from_docx(content)
+        document_text = extract_text_from_file(file.filename, content)
         
         # Initialize LLM and create chain
         llm = initialize_llm(groq_api_key)
@@ -105,7 +105,7 @@ async def generate_video(
     try:
         validate_file(file.filename)
         content = await file.read()
-        document_text = extract_text_from_docx(content)
+        document_text = extract_text_from_file(file.filename, content)
         
         # 1. Generate Slide Data
         llm = initialize_llm(groq_api_key)
@@ -117,11 +117,32 @@ async def generate_video(
         )
         chain = prompt | llm | parser
         
-        video_data_raw = chain.invoke({"document_text": document_text[:MAX_DOCUMENT_LENGTH]})
-        slides = video_data_raw if isinstance(video_data_raw, list) else video_data_raw.get("slides", [])
+        video_data_raw = None
+        slides = []
+        
+        # Add retry logic since LLMs sometimes fail strict JSON formatting
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                video_data_raw = chain.invoke({"document_text": document_text[:MAX_DOCUMENT_LENGTH]})
+                
+                # Handle dict with 'slides' key or just a straight list of slides
+                if isinstance(video_data_raw, dict) and "slides" in video_data_raw:
+                    slides = video_data_raw["slides"]
+                elif isinstance(video_data_raw, list):
+                    slides = video_data_raw
+                    
+                if slides:
+                    break # Success!
+                    
+            except Exception as e:
+                print(f"Attempt {attempt + 1} failed to parse JSON: {e}")
+                if attempt == max_retries - 1:
+                    raise HTTPException(status_code=500, detail=f"Failed to generate valid slide content after {max_retries} attempts")
 
         if not slides:
-            raise HTTPException(status_code=500, detail="Failed to generate slide content")
+            print(f"Failed to parse slides. Raw response: {video_data_raw}")
+            raise HTTPException(status_code=500, detail="Failed to generate slide content from document")
 
         # 2. Process Slides (Audio + Images)
         video_clips = []
@@ -133,7 +154,15 @@ async def generate_video(
             
             # Create Image
             img_path = os.path.join(temp_dir, f"slide_{i}.png")
-            create_slide_image(slide['title'], slide['bullets'], img_path)
+            
+            # Check for logo
+            logo_path = None
+            if os.path.exists("logo.png"):
+                logo_path = "logo.png"
+            elif os.path.exists("logo.jpg"):
+                logo_path = "logo.jpg"
+                
+            create_slide_image(slide['title'], slide['bullets'], img_path, logo_path=logo_path)
             
             # Create Clip
             audio_clip = AudioFileClip(audio_path)

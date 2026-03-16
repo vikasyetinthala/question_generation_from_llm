@@ -116,31 +116,7 @@ def extract_text_from_file(filename: str, content: bytes) -> str:
         )
 
 
-def extract_text_from_file(filename: str, content: bytes) -> str:
-    """
-    Extract text from document based on file type.
-    
-    Args:
-        filename: Name of the file
-        content: Raw bytes of the file
-        
-    Returns:
-        Extracted text as string
-        
-    Raises:
-        HTTPException: If file type is not supported or cannot be read
-    """
-    file_ext = "." + filename.split('.')[-1].lower()
-    
-    if file_ext == ".docx":
-        return extract_text_from_docx(content)
-    elif file_ext == ".pdf":
-        return extract_text_from_pdf(content)
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type: {file_ext}. Supported types: .docx, .pdf"
-        )
+
 
 
 # ============================================================================
@@ -429,7 +405,7 @@ def validate_file(filename: str) -> None:
     if file_ext not in ALLOWED_FILE_TYPES:
         raise HTTPException(
             status_code=400, 
-            detail=f"File must be a .docx file. Got: {file_ext}"
+            detail=f"File must be a .docx or .pdf file. Got: {file_ext}"
         )
 
 
@@ -484,8 +460,8 @@ def create_prompt_chain(llm):
     return prompt | llm | StrOutputParser()
 
 
-def create_slide_image(title, bullets, output_path):
-    """Create a slide image using Pillow."""
+def create_slide_image(title, bullets, output_path, logo_path=None):
+    """Create a slide image using Pillow with text wrapping."""
     width, height = 1280, 720
     background_color = (30, 30, 30)
     text_color = (255, 255, 255)
@@ -496,21 +472,51 @@ def create_slide_image(title, bullets, output_path):
     
     # Use default font if custom font not found
     try:
-        title_font = ImageFont.truetype("arial.ttf", 60)
-        content_font = ImageFont.truetype("arial.ttf", 40)
+        title_font = ImageFont.truetype("arial.ttf", 48)
+        content_font = ImageFont.truetype("arial.ttf", 32)
     except:
         title_font = ImageFont.load_default()
         content_font = ImageFont.load_default()
         
+    import textwrap
+    import os
+    
+    # Check if a logo path is provided and exists
+    if logo_path and os.path.exists(logo_path):
+        try:
+            logo = Image.open(logo_path).convert("RGBA")
+            # Resize the logo to fit nicely (e.g. height 100)
+            aspect_ratio = logo.width / logo.height
+            new_height = 100
+            new_width = int(new_height * aspect_ratio)
+            logo = logo.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            # Position it at the top-right corner
+            # 40px margins from the top and right
+            img.paste(logo, (width - new_width - 40, 40), logo)
+        except Exception as e:
+            print(f"Error drawing logo: {e}")
+    
     # Draw Title
-    draw.text((80, 60), title, font=title_font, fill=accent_color)
-    draw.line((80, 130, 1200, 130), fill=accent_color, width=3)
+    title_wrapped = textwrap.wrap(title, width=42)
+    y_offset = 50
+    for line in title_wrapped:
+        draw.text((80, y_offset), line, font=title_font, fill=accent_color)
+        y_offset += 60
+        
+    y_offset += 10
+    draw.line((80, y_offset, 1200, y_offset), fill=accent_color, width=3)
     
     # Draw Bullets
-    y_offset = 180
+    y_offset += 40
     for bullet in bullets:
-        draw.text((100, y_offset), f"• {bullet}", font=content_font, fill=text_color)
-        y_offset += 60
+        bullet_wrapped = textwrap.wrap(f"• {bullet}", width=70)
+        for i, line in enumerate(bullet_wrapped):
+            # Indent subsequent lines to align with bullet point text
+            indent = 0 if i == 0 else 20
+            draw.text((100 + indent, y_offset), line, font=content_font, fill=text_color)
+            y_offset += 45
+        y_offset += 20  # Add extra spacing between bullets
         
     img.save(output_path)
 
