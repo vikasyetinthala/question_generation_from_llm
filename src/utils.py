@@ -527,22 +527,31 @@ def create_slide_image(title, bullets, output_path, logo_path=None):
         except Exception as e:
             print(f"Error drawing logo: {e}")
     
+    # Calculate safe text area (leave right margin for logo)
+    logo_reserved_width = 220  # width reserved for logo in top-right
+    text_safe_width = width - logo_reserved_width  # usable text area width
+    divider_end = text_safe_width - 20
+    
+    # Approximate chars per line based on font size 48 and safe width (~14px/char)
+    safe_title_chars = int(text_safe_width / 27)
+
     # Draw Title
-    title_wrapped = textwrap.wrap(title, width=42)
-    y_offset = 50
+    title_wrapped = textwrap.wrap(title, width=safe_title_chars)
+    y_offset = 60
     for line in title_wrapped:
         draw.text((80, y_offset), line, font=title_font, fill=accent_color)
         y_offset += 60
         
     y_offset += 10
-    draw.line((80, y_offset, 1200, y_offset), fill=accent_color, width=3)
+    draw.line((80, y_offset, divider_end, y_offset), fill=accent_color, width=3)
     
     # Draw Bullets
     y_offset += 40
+    # Bullet chars: font size 32 ~9px/char, safe width to 1100px
+    safe_bullet_chars = int((width - 140) / 18)
     for bullet in bullets:
-        bullet_wrapped = textwrap.wrap(f"• {bullet}", width=70)
+        bullet_wrapped = textwrap.wrap(f"• {bullet}", width=safe_bullet_chars)
         for i, line in enumerate(bullet_wrapped):
-            # Indent subsequent lines to align with bullet point text
             indent = 0 if i == 0 else 20
             draw.text((100 + indent, y_offset), line, font=content_font, fill=text_color)
             y_offset += 45
