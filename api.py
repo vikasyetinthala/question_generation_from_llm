@@ -11,7 +11,7 @@ import uuid
 import shutil
 from typing import List, Dict
 from fastapi import FastAPI, UploadFile, File, HTTPException, Header, BackgroundTasks
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from src.api.schemas import *
@@ -175,11 +175,24 @@ async def generate_video(
         output_filename = f"video_{uuid.uuid4()}.mp4"
         final_video.write_videofile(output_filename, fps=24, codec="libx264")
         
-        # Add cleanup tasks
-        background_tasks.add_task(cleanup_files, output_filename, temp_dir)
+        # Read the video file into memory before cleanup (fixes ephemeral filesystem issues on cloud)
+        with open(output_filename, "rb") as f:
+            video_bytes = f.read()
         
-        return FileResponse(output_filename, media_type="video/mp4", filename="educational_video.mp4")
+        # Clean up temp files immediately
+        cleanup_files(output_filename, temp_dir)
+        
+        import io as _io
+        return StreamingResponse(
+            _io.BytesIO(video_bytes),
+            media_type="video/mp4",
+            headers={"Content-Disposition": "attachment; filename=educational_video.mp4"}
+        )
 
+    except HTTPException:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        raise
     except Exception as e:
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
