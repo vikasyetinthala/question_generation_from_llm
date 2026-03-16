@@ -40,13 +40,28 @@ def extract_text_from_docx(content: bytes) -> str:
     """
     try:
         doc = Document(io.BytesIO(content))
-        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-        document_text = "\n\n".join(paragraphs)
+        text_parts = []
+        
+        # Extract from paragraphs
+        for p in doc.paragraphs:
+            if p.text.strip():
+                text_parts.append(p.text.strip())
+                
+        # Extract from tables
+        for table in doc.tables:
+            for row in table.rows:
+                row_text = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                if row_text:
+                    text_parts.append(" | ".join(row_text))
+                    
+        document_text = "\n\n".join(text_parts)
         
         if not document_text:
-            raise HTTPException(status_code=400, detail="Document contains no text")
+            raise ValueError("Document contains no readable text")
         
         return document_text
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to read DOCX document: {str(e)}")
 
@@ -380,13 +395,28 @@ def extract_text_from_docx(content: bytes) -> str:
     """
     try:
         doc = Document(io.BytesIO(content))
-        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-        document_text = "\n\n".join(paragraphs)
+        text_parts = []
+        
+        # Extract from paragraphs
+        for p in doc.paragraphs:
+            if p.text.strip():
+                text_parts.append(p.text.strip())
+                
+        # Extract from tables
+        for table in doc.tables:
+            for row in table.rows:
+                row_text = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                if row_text:
+                    text_parts.append(" | ".join(row_text))
+                    
+        document_text = "\n\n".join(text_parts)
         
         if not document_text:
-            raise HTTPException(status_code=400, detail="Document contains no text")
+            raise ValueError("Document contains no readable text")
         
         return document_text
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to read document: {str(e)}")
 

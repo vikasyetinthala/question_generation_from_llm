@@ -133,7 +133,7 @@ Ensure all questions are relevant to '{topic}'."""
 VIDEO_PROMPT_TEMPLATE = """You are an expert educator. Based on the following document content, create a structured script for a short educational video.
 The video should consist of several slides. For each slide, provide:
 1. A concise Title.
-2. 3-4 key Bullet Points.
+2. 3-4 key Bullet Points. Make sure each bullet point is SHORT and CONCISE (maximum 12 words per bullet point).
 3. A spoken Script (what the narrator says).
 
 Document:
