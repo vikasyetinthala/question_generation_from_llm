@@ -35,6 +35,14 @@ LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.7"))
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "3000"))
 
+
+# LLM Configuration
+LLM_CONFIG = {
+    "model": LLM_MODEL,
+    "temperature": LLM_TEMPERATURE,
+    "max_tokens": LLM_MAX_TOKENS
+}
+
 # ============================================================================
 # VALIDATION CONSTANTS
 # ============================================================================
@@ -45,6 +53,8 @@ MAX_QUESTIONS = 10
 DEFAULT_QUESTIONS = 5
 MAX_DOCUMENT_LENGTH = 3000
 MIN_DOCUMENT_LENGTH = 10
+
+
 
 # ============================================================================
 # STREAMLIT CONFIGURATION
@@ -117,3 +127,25 @@ D) [Option D]
 Correct Answer: [A/B/C/D]
 
 Ensure all questions are relevant to '{topic}'."""
+
+
+# Video Prompt Template
+VIDEO_PROMPT_TEMPLATE = """You are an expert educator. Based on the following document content, create a structured script for a short educational video.
+The video should consist of several slides. For each slide, provide:
+1. A concise Title.
+2. 3-4 key Bullet Points.
+3. A spoken Script (what the narrator says).
+
+Document:
+{document_text}
+
+Output the response in JSON format as a list of slide objects.
+Example:
+[
+  {{
+    "title": "Introduction to AI",
+    "bullets": ["Definition of AI", "History", "Why it matters"],
+    "script": "Welcome! Today we're exploring Artificial Intelligence, its roots, and its transformative impact."
+  }}
+]
+"""

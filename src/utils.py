@@ -8,7 +8,18 @@ from fastapi import HTTPException
 from docx import Document
 from typing import List, Dict, Optional
 from pypdf import PdfReader
+import os 
+import shutil
+from src.config import *
 
+from docx import Document
+from langchain_groq import ChatGroq
+from langchain_core.prompts import PromptTemplate
+from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
+from langchain_core.pydantic_v1 import BaseModel, Field
+from gtts import gTTS
+from PIL import Image, ImageDraw, ImageFont
+from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
 
 # ============================================================================
 # DOCUMENT UTILITIES
@@ -365,3 +376,190 @@ def clean_text(text: str) -> str:
     # Remove extra whitespace
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
+
+def cleanup_files(filepath: str, dirpath: str):
+    """Delete the generated video file and temporary directory."""
+    try:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        if os.path.exists(dirpath):
+            shutil.rmtree(dirpath)
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
+
+
+
+def extract_text_from_docx(content: bytes) -> str:
+    """
+    Extract text from a Word document.
+    
+    Args:
+        content: Raw bytes of the .docx file
+        
+    Returns:
+        Extracted text as string
+        
+    Raises:
+        HTTPException: If document cannot be read or is empty
+    """
+    try:
+        doc = Document(io.BytesIO(content))
+        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+        document_text = "\n\n".join(paragraphs)
+        
+        if not document_text:
+            raise HTTPException(status_code=400, detail="Document contains no text")
+        
+        return document_text
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read document: {str(e)}")
+
+
+def validate_file(filename: str) -> None:
+    """
+    Validate uploaded file type.
+    
+    Args:
+        filename: Name of the uploaded file
+        
+    Raises:
+        HTTPException: If file type is not allowed
+    """
+    file_ext = "." + filename.split('.')[-1].lower()
+    if file_ext not in ALLOWED_FILE_TYPES:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"File must be a .docx file. Got: {file_ext}"
+        )
+
+
+def validate_num_questions(num_questions: int) -> None:
+    """
+    Validate number of questions parameter.
+    
+    Args:
+        num_questions: Number of questions to generate
+        
+    Raises:
+        HTTPException: If num_questions is out of valid range
+    """
+    if num_questions < MIN_QUESTIONS or num_questions > MAX_QUESTIONS:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"num_questions must be between {MIN_QUESTIONS} and {MAX_QUESTIONS}"
+        )
+
+
+def initialize_llm(groq_api_key: str):
+    """
+    Initialize and return Groq LLM instance.
+    
+    Args:
+        groq_api_key: API key for Groq service
+        
+    Returns:
+        Initialized ChatGroq instance
+    """
+    return ChatGroq(
+        model=LLM_CONFIG["model"],
+        temperature=LLM_CONFIG["temperature"],
+        groq_api_key=groq_api_key
+    )
+
+
+def create_prompt_chain(llm):
+    """
+    Create LangChain prompt and execution chain.
+    
+    Args:
+        llm: Initialized ChatGroq instance
+        
+    Returns:
+        Execution chain combining prompt template and LLM
+    """
+    prompt = PromptTemplate(
+        input_variables=["document_text", "num_questions"],
+        template=MCQ_PROMPT_TEMPLATE
+    )
+    return prompt | llm | StrOutputParser()
+
+
+def create_slide_image(title, bullets, output_path):
+    """Create a slide image using Pillow."""
+    width, height = 1280, 720
+    background_color = (30, 30, 30)
+    text_color = (255, 255, 255)
+    accent_color = (0, 150, 255)
+    
+    img = Image.new('RGB', (width, height), color=background_color)
+    draw = ImageDraw.Draw(img)
+    
+    # Use default font if custom font not found
+    try:
+        title_font = ImageFont.truetype("arial.ttf", 60)
+        content_font = ImageFont.truetype("arial.ttf", 40)
+    except:
+        title_font = ImageFont.load_default()
+        content_font = ImageFont.load_default()
+        
+    # Draw Title
+    draw.text((80, 60), title, font=title_font, fill=accent_color)
+    draw.line((80, 130, 1200, 130), fill=accent_color, width=3)
+    
+    # Draw Bullets
+    y_offset = 180
+    for bullet in bullets:
+        draw.text((100, y_offset), f"• {bullet}", font=content_font, fill=text_color)
+        y_offset += 60
+        
+    img.save(output_path)
+
+
+def parse_mcqs(text: str) -> list:
+    """
+    Parse MCQ text response into structured format.
+    
+    Args:
+        text: Raw LLM response containing MCQs
+        
+    Returns:
+        List of dictionaries with question, options, and correct answer
+    """
+    mcqs = []
+    
+    # Split by question pattern
+    questions = re.split(r'Question \d+:', text)
+    
+    for q in questions[1:]:  # Skip first empty split
+        lines = q.strip().split('\n')
+        if len(lines) < 5:
+            continue
+        
+        question_text = lines[0].strip()
+        options = {}
+        correct_answer = None
+        
+        # Parse options and answer
+        for line in lines[1:]:
+            line = line.strip()
+            if line.startswith('A)'):
+                options['A'] = line[2:].strip()
+            elif line.startswith('B)'):
+                options['B'] = line[2:].strip()
+            elif line.startswith('C)'):
+                options['C'] = line[2:].strip()
+            elif line.startswith('D)'):
+                options['D'] = line[2:].strip()
+            elif line.startswith('Correct Answer:'):
+                correct_answer = line.split(':')[1].strip()
+        
+        # Only add if all required fields are present
+        if question_text and len(options) == 4 and correct_answer:
+            mcqs.append({
+                "question": question_text,
+                "options": options,
+                "correct_answer": correct_answer
+            })
+    
+    return mcqs
+

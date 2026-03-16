@@ -81,3 +81,11 @@ class ErrorResponse(BaseModel):
     status: str = Field(default="error", description="Error status")
     detail: str = Field(..., description="Error details")
     code: int = Field(..., description="Error code")
+
+class Slide(BaseModel):
+    title: str = Field(description="The title of the slide")
+    bullets: List[str] = Field(description="Key points for the slide")
+    script: str = Field(description="The spoken narrative for the slide")
+
+class VideoData(BaseModel):
+    slides: List[Slide]

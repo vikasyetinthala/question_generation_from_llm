@@ -3,15 +3,20 @@
 # Generates multiple choice questions from Word documents using Groq LLM
 # ============================================================================
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Header
-from fastapi.responses import JSONResponse
-from docx import Document
 import io
 import re
+import os
 import uvicorn
-from langchain_groq import ChatGroq
+import uuid
+import shutil
+from typing import List, Dict
+from fastapi import FastAPI, UploadFile, File, HTTPException, Header, BackgroundTasks
+from fastapi.responses import JSONResponse, FileResponse
 from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
+from src.api.schemas import *
+from src.utils import *
+from src.config import *
 
 # ============================================================================
 # CONFIGURATION & CONSTANTS
@@ -24,36 +29,7 @@ APP_CONFIG = {
     "version": "1.0.0"
 }
 
-# LLM Configuration
-LLM_CONFIG = {
-    "model": "llama-3.1-8b-instant",
-    "temperature": 0.7,
-    "max_tokens": 3000
-}
 
-# Validation Constants
-ALLOWED_FILE_TYPES = [".docx"]
-MIN_QUESTIONS = 1
-MAX_QUESTIONS = 10
-DEFAULT_QUESTIONS = 5
-MAX_DOCUMENT_LENGTH = 3000
-
-# MCQ Prompt Template
-MCQ_PROMPT_TEMPLATE = """Based on the following document content, generate {num_questions} multiple choice questions that test understanding of the key concepts.
-
-Document:
-{document_text}
-
-For each question, generate in this exact format:
-
-Question 1: [Question text here?]
-A) [Option A]
-B) [Option B]
-C) [Option C]
-D) [Option D]
-Correct Answer: [A/B/C/D]
-
-Repeat this format for all {num_questions} questions. Make them clear, specific, and relevant to the document content. Ensure options are plausible but the correct answer is unambiguous."""
 
 # Initialize FastAPI App
 app = FastAPI(**APP_CONFIG)
@@ -65,7 +41,7 @@ async def generate_mcqs(
     num_questions: int = DEFAULT_QUESTIONS
 ):
     """
-    Generate multiple choice questions from a Word document.
+    Generate multiple choice questions from a Word docume nt.
     
     Parameters:
     - file: Word document (.docx)
@@ -112,6 +88,75 @@ async def generate_mcqs(
             status_code=500, 
             detail=f"Error generating questions: {str(e)}"
         )
+
+
+@app.post("/generate-video")
+async def generate_video(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    groq_api_key: str = Header(...)
+):
+    """
+    Generate an educational video from a Word document.
+    """
+    temp_dir = f"temp_{uuid.uuid4()}"
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    try:
+        validate_file(file.filename)
+        content = await file.read()
+        document_text = extract_text_from_docx(content)
+        
+        # 1. Generate Slide Data
+        llm = initialize_llm(groq_api_key)
+        parser = JsonOutputParser(pydantic_object=VideoData)
+        prompt = PromptTemplate(
+            template=VIDEO_PROMPT_TEMPLATE + "\n{format_instructions}",
+            input_variables=["document_text"],
+            partial_variables={"format_instructions": parser.get_format_instructions()}
+        )
+        chain = prompt | llm | parser
+        
+        video_data_raw = chain.invoke({"document_text": document_text[:MAX_DOCUMENT_LENGTH]})
+        slides = video_data_raw if isinstance(video_data_raw, list) else video_data_raw.get("slides", [])
+
+        if not slides:
+            raise HTTPException(status_code=500, detail="Failed to generate slide content")
+
+        # 2. Process Slides (Audio + Images)
+        video_clips = []
+        for i, slide in enumerate(slides):
+            # Create Audio
+            audio_path = os.path.join(temp_dir, f"audio_{i}.mp3")
+            tts = gTTS(text=slide['script'], lang='en')
+            tts.save(audio_path)
+            
+            # Create Image
+            img_path = os.path.join(temp_dir, f"slide_{i}.png")
+            create_slide_image(slide['title'], slide['bullets'], img_path)
+            
+            # Create Clip
+            audio_clip = AudioFileClip(audio_path)
+            img_clip = ImageClip(img_path).with_duration(audio_clip.duration)
+            clip = img_clip.with_audio(audio_clip)
+            video_clips.append(clip)
+            
+        # 3. Assemble Video
+        final_video = concatenate_videoclips(video_clips, method="compose")
+        output_filename = f"video_{uuid.uuid4()}.mp4"
+        final_video.write_videofile(output_filename, fps=24, codec="libx264")
+        
+        # Add cleanup tasks
+        background_tasks.add_task(cleanup_files, output_filename, temp_dir)
+        
+        return FileResponse(output_filename, media_type="video/mp4", filename="educational_video.mp4")
+
+    except Exception as e:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+        raise HTTPException(status_code=500, detail=f"Video generation failed: {str(e)}")
+
+
 
 
 @app.get("/health")
@@ -165,150 +210,6 @@ async def root():
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
-
-def extract_text_from_docx(content: bytes) -> str:
-    """
-    Extract text from a Word document.
-    
-    Args:
-        content: Raw bytes of the .docx file
-        
-    Returns:
-        Extracted text as string
-        
-    Raises:
-        HTTPException: If document cannot be read or is empty
-    """
-    try:
-        doc = Document(io.BytesIO(content))
-        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-        document_text = "\n\n".join(paragraphs)
-        
-        if not document_text:
-            raise HTTPException(status_code=400, detail="Document contains no text")
-        
-        return document_text
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to read document: {str(e)}")
-
-
-def validate_file(filename: str) -> None:
-    """
-    Validate uploaded file type.
-    
-    Args:
-        filename: Name of the uploaded file
-        
-    Raises:
-        HTTPException: If file type is not allowed
-    """
-    file_ext = "." + filename.split('.')[-1].lower()
-    if file_ext not in ALLOWED_FILE_TYPES:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"File must be a .docx file. Got: {file_ext}"
-        )
-
-
-def validate_num_questions(num_questions: int) -> None:
-    """
-    Validate number of questions parameter.
-    
-    Args:
-        num_questions: Number of questions to generate
-        
-    Raises:
-        HTTPException: If num_questions is out of valid range
-    """
-    if num_questions < MIN_QUESTIONS or num_questions > MAX_QUESTIONS:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"num_questions must be between {MIN_QUESTIONS} and {MAX_QUESTIONS}"
-        )
-
-
-def initialize_llm(groq_api_key: str) -> ChatGroq:
-    """
-    Initialize and return Groq LLM instance.
-    
-    Args:
-        groq_api_key: API key for Groq service
-        
-    Returns:
-        Initialized ChatGroq instance
-    """
-    return ChatGroq(
-        model=LLM_CONFIG["model"],
-        temperature=LLM_CONFIG["temperature"],
-        groq_api_key=groq_api_key
-    )
-
-
-def create_prompt_chain(llm: ChatGroq) -> object:
-    """
-    Create LangChain prompt and execution chain.
-    
-    Args:
-        llm: Initialized ChatGroq instance
-        
-    Returns:
-        Execution chain combining prompt template and LLM
-    """
-    prompt = PromptTemplate(
-        input_variables=["document_text", "num_questions"],
-        template=MCQ_PROMPT_TEMPLATE
-    )
-    return prompt | llm | StrOutputParser()
-
-
-def parse_mcqs(text: str) -> list:
-    """
-    Parse MCQ text response into structured format.
-    
-    Args:
-        text: Raw LLM response containing MCQs
-        
-    Returns:
-        List of dictionaries with question, options, and correct answer
-    """
-    mcqs = []
-    
-    # Split by question pattern
-    questions = re.split(r'Question \d+:', text)
-    
-    for q in questions[1:]:  # Skip first empty split
-        lines = q.strip().split('\n')
-        if len(lines) < 5:
-            continue
-        
-        question_text = lines[0].strip()
-        options = {}
-        correct_answer = None
-        
-        # Parse options and answer
-        for line in lines[1:]:
-            line = line.strip()
-            if line.startswith('A)'):
-                options['A'] = line[2:].strip()
-            elif line.startswith('B)'):
-                options['B'] = line[2:].strip()
-            elif line.startswith('C)'):
-                options['C'] = line[2:].strip()
-            elif line.startswith('D)'):
-                options['D'] = line[2:].strip()
-            elif line.startswith('Correct Answer:'):
-                correct_answer = line.split(':')[1].strip()
-        
-        # Only add if all required fields are present
-        if question_text and len(options) == 4 and correct_answer:
-            mcqs.append({
-                "question": question_text,
-                "options": options,
-                "correct_answer": correct_answer
-            })
-    
-    return mcqs
-
 
 
 # ============================================================================

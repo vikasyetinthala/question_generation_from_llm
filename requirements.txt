@@ -12,6 +12,9 @@ langchain==0.1.17
 langchain-core>=0.1.48,<0.2.0
 langchain-groq==0.1.5
 groq==0.37.1
+moviepy>=2.0.0
+gTTS>=2.5.1
+Pillow>=10.0.0
 
 # Utilities
 python-dotenv==1.0.0
