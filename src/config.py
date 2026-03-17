@@ -51,7 +51,7 @@ ALLOWED_FILE_TYPES = [".docx", ".pdf"]
 MIN_QUESTIONS = 1
 MAX_QUESTIONS = 10
 DEFAULT_QUESTIONS = 5
-MAX_DOCUMENT_LENGTH = 3000
+MAX_DOCUMENT_LENGTH = 10000
 MIN_DOCUMENT_LENGTH = 10
 
 
@@ -130,11 +130,13 @@ Ensure all questions are relevant to '{topic}'."""
 
 
 # Video Prompt Template
-VIDEO_PROMPT_TEMPLATE = """You are an expert educator. Based on the following document content, create a structured script for a short educational video.
-The video should consist of several slides. For each slide, provide:
+VIDEO_PROMPT_TEMPLATE = """You are an expert educator. Based on the following document content, create a structured script for a detailed educational video.
+The video should consist of at least 8 to 12 slides to ensure thorough coverage of the material. For each slide, provide:
 1. A concise Title.
 2. 3-4 key Bullet Points. Make sure each bullet point is SHORT and CONCISE (maximum 12 words per bullet point).
 3. A spoken Script (what the narrator says).
+
+Ensure that the slides cover all major sections and important details from the document. Do not skip key concepts.
 
 Document:
 {document_text}

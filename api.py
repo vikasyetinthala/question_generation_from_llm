@@ -146,7 +146,7 @@ async def generate_mcqs(
         document_text = extract_text_from_file(file.filename, content)
         
         # Initialize LLM and create chain
-        llm = initialize_llm(groq_api_key)
+        llm = initialize_llm(GROQ_API_KEY)
         chain = create_prompt_chain(llm)
 
         result = chain.invoke({
@@ -176,7 +176,6 @@ async def generate_mcqs(
 @app.post("/generate-video")
 async def generate_video(
     file: UploadFile = File(...),
-    groq_api_key: str = Header(...)
 ):
     """
     Generate an educational video from a Word document.
@@ -190,7 +189,7 @@ async def generate_video(
         document_text = extract_text_from_file(file.filename, content)
         
         # 1. Generate Slide Data
-        llm = initialize_llm(groq_api_key)
+        llm = initialize_llm(GROQ_API_KEY)
         parser = JsonOutputParser(pydantic_object=VideoData)
         prompt = PromptTemplate(
             template=VIDEO_PROMPT_TEMPLATE + "\n{format_instructions}",
