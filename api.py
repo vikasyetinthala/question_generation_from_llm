@@ -116,7 +116,15 @@ def _run_video_job(job_id: str, document_text: str, groq_api_key: str):
 
         # 3. Assemble Video
         final_video = concatenate_videoclips(video_clips, method="compose")
-        final_video.write_videofile(output_filename, fps=24, codec="libx264")
+        # Direct MoviePy temp audio to temp_dir to ensure it gets cleaned up
+        final_video.write_videofile(
+            output_filename, 
+            fps=24, 
+            codec="libx264", 
+            audio_codec="aac", 
+            temp_audiofile=os.path.join(temp_dir, "temp-audio.m4a"), 
+            remove_temp=True
+        )
         
         # Close all clips to release file locks (important for Windows)
         for clip in video_clips:
@@ -320,7 +328,15 @@ async def generate_video(
         zip_output = f"{base_name}.zip"
 
         # Generate Video
-        final_video.write_videofile(video_output, fps=24, codec="libx264")
+        # Direct MoviePy temp audio to temp_dir to ensure it gets cleaned up
+        final_video.write_videofile(
+            video_output, 
+            fps=24, 
+            codec="libx264", 
+            audio_codec="aac", 
+            temp_audiofile=os.path.join(temp_dir, "temp-audio.m4a"), 
+            remove_temp=True
+        )
         
         # Close all clips and release file locks
         for clip in video_clips:
@@ -366,14 +382,26 @@ async def generate_video(
             headers={"Content-Disposition": f"attachment; filename=video_package_{uuid.uuid4().hex[:8]}.zip"}
         )
 
-    except HTTPException:
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-        raise
-    except Exception as e:
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-        raise HTTPException(status_code=500, detail=f"Video generation failed: {str(e)}")
+    finally:
+        # Final cleanup pass for any remaining files
+        if 'video_output' in locals() and os.path.exists(video_output):
+            try: os.remove(video_output)
+            except: pass
+        if 'zip_output' in locals() and os.path.exists(zip_output):
+            try: os.remove(zip_output)
+            except: pass
+        
+        # Ensure temp_dir is removed even if cleanup_files failed previously
+        if 'temp_dir' in locals() and os.path.exists(temp_dir):
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            
+        # Clean up any leftover TEMP_MPY files in the current directory if they exist
+        # MoviePy sometimes leaves these if interrupted
+        for f in os.listdir("."):
+            if f.startswith("video_") and f.endswith("TEMP_MPY_wvf_snd.mp3"):
+                try: os.remove(f)
+                except: pass
 
 
 
