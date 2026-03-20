@@ -10,7 +10,7 @@ from typing import List, Dict, Optional
 from pypdf import PdfReader
 import os 
 import shutil
-from src.config import *
+from src.config import LLM_CONFIG, MAX_DOCUMENT_LENGTH, ALLOWED_FILE_TYPES
 
 from docx import Document
 from langchain_groq import ChatGroq
@@ -21,6 +21,7 @@ from gtts import gTTS
 from PIL import Image, ImageDraw, ImageFont
 from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
 import zipfile
+from groq import Groq
 
 # ============================================================================
 # DOCUMENT UTILITIES
@@ -470,6 +471,7 @@ def initialize_llm(groq_api_key: str):
     return ChatGroq(
         model=LLM_CONFIG["model"],
         temperature=LLM_CONFIG["temperature"],
+        max_tokens=LLM_CONFIG["max_tokens"],
         groq_api_key=groq_api_key
     )
 
@@ -629,5 +631,23 @@ def create_script_txt(slides: List[Dict], output_path: str):
                     f.write(f"  - {bullet}\n")
                 f.write("\n")
             f.write("\n")
+
+
+def transcribe_audio(audio_path: str, groq_api_key: str) -> str:
+    """
+    Transcribe audio file using Groq Whisper model.
+    """
+    client = Groq(api_key=groq_api_key)
+    try:
+        with open(audio_path, "rb") as file:
+            transcription = client.audio.transcriptions.create(
+                file=(audio_path, file.read()),
+                model="whisper-large-v3",
+                response_format="text",
+            )
+            return transcription
+    except Exception as e:
+        print(f"Transcription error for {audio_path}: {e}")
+        return ""
 
 

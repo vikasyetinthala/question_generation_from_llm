@@ -32,8 +32,8 @@ API_PORT = int(os.getenv("API_PORT", 8000))
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
-LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.7"))
-LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "3000"))
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.3"))
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "8192"))
 
 
 # LLM Configuration
@@ -51,7 +51,7 @@ ALLOWED_FILE_TYPES = [".docx", ".pdf"]
 MIN_QUESTIONS = 1
 MAX_QUESTIONS = 10
 DEFAULT_QUESTIONS = 5
-MAX_DOCUMENT_LENGTH = 10000
+MAX_DOCUMENT_LENGTH = 30000
 MIN_DOCUMENT_LENGTH = 10
 
 
@@ -131,23 +131,15 @@ Ensure all questions are relevant to '{topic}'."""
 
 # Video Prompt Template
 VIDEO_PROMPT_TEMPLATE = """You are an expert educator. Based on the following document content, create a structured script for a COMPREHENSIVE educational video.
-The video should consist of at least 15 to 20 slides to ensure every single detail and section of the material is covered thoroughly. For each slide, provide:
-1. A concise Title.
-2. 3-4 key Bullet Points. Make sure each bullet point is SHORT and CONCISE (maximum 12 words per bullet point).
+The video should cover every section of the material thoroughly across 15 to 20 slides. 
+
+For each slide, provide:
+1. A descriptive Title.
+2. 3-5 informative Bullet Points. Each bullet point MUST contain substantive information (facts, definitions, or explanations) from the script. Avoid generic headers. Aim for 12-20 words per bullet point.
 3. A spoken Script (what the narrator says).
 
-CRITICAL: Do not summarize or skip any major sections. The video must cover all details from the input text to ensure a complete learning experience.
+CRITICAL: The bullet points must be detailed and directly reflect the specific content of the spoken script for that slide. Do not use one-word bullets or generic placeholders.
 
 Document:
 {document_text}
-
-Output the response in JSON format as a list of slide objects.
-Example:
-[
-  {{
-    "title": "Introduction to AI",
-    "bullets": ["Definition of AI", "History", "Why it matters"],
-    "script": "Welcome! Today we're exploring Artificial Intelligence, its roots, and its transformative impact."
-  }}
-]
 """

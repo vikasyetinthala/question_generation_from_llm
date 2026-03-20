@@ -13,6 +13,8 @@ import threading
 import zipfile
 from typing import List, Dict
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from gtts import gTTS
+from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
@@ -81,6 +83,17 @@ def _run_video_job(job_id: str, document_text: str, groq_api_key: str):
         if not slides:
             raise RuntimeError("Failed to generate slide content from document")
 
+        # Normalize slides for dictionary access
+        normalized_slides = []
+        for s in slides:
+            if hasattr(s, "model_dump"):
+                normalized_slides.append(s.model_dump())
+            elif isinstance(s, dict):
+                normalized_slides.append(s)
+            else:
+                normalized_slides.append(dict(s))
+        slides = normalized_slides
+
         # 2. Process Slides (Audio + Images)
         video_clips = []
         for i, slide in enumerate(slides):
@@ -104,11 +117,35 @@ def _run_video_job(job_id: str, document_text: str, groq_api_key: str):
         # 3. Assemble Video
         final_video = concatenate_videoclips(video_clips, method="compose")
         final_video.write_videofile(output_filename, fps=24, codec="libx264")
+        
+        # Close all clips to release file locks (important for Windows)
+        for clip in video_clips:
+            clip.close()
+        final_video.close()
 
+        # 4. Generate Transcription
+        full_transcription = ""
+        for i in range(len(slides)):
+            audio_path = os.path.join(temp_dir, f"audio_{i}.mp3")
+            if os.path.exists(audio_path):
+                transcript = transcribe_audio(audio_path, groq_api_key)
+                full_transcription += f"Slide {i+1}:\n{transcript}\n\n"
+        
+        transcription_path = os.path.join(temp_dir, "transcription.txt")
+        with open(transcription_path, "w", encoding="utf-8") as f:
+            f.write(full_transcription)
+
+        # 5. Create ZIP Archive for async job (if needed, but here it just stores video_bytes)
+        # However, _video_jobs only stores video_bytes currently. 
+        # The user's request implies the ZIP download should have it.
+        # Wait, the current _run_video_job only stores video_bytes. 
+        # Let's see if there's a download-video endpoint that uses this.
+        
         with open(output_filename, "rb") as f:
             video_bytes = f.read()
 
         _video_jobs[job_id]["video_bytes"] = video_bytes
+        _video_jobs[job_id]["transcription"] = full_transcription
         _video_jobs[job_id]["status"] = "done"
 
     except Exception as e:
@@ -191,13 +228,12 @@ async def generate_video(
         
         # 1. Generate Slide Data
         llm = initialize_llm(GROQ_API_KEY)
-        parser = JsonOutputParser(pydantic_object=VideoData)
+        # Use a simpler prompt for the 8b model to avoid confusion
         prompt = PromptTemplate(
-            template=VIDEO_PROMPT_TEMPLATE + "\n{format_instructions}",
-            input_variables=["document_text"],
-            partial_variables={"format_instructions": parser.get_format_instructions()}
+            template=VIDEO_PROMPT_TEMPLATE + "\n\nCRITICAL: Output ONLY a valid JSON object. No preamble or explanation. Start with an opening brace and end with a closing brace.\nFormat:\n{{\"slides\": [{{\"title\": \"Slide Title\", \"bullets\": [\"Point 1\", \"Point 2\"], \"script\": \"Narrator script\"}}]}}",
+            input_variables=["document_text"]
         )
-        chain = prompt | llm | parser
+        chain = prompt | llm | StrOutputParser()
         
         video_data_raw = None
         slides = []
@@ -206,7 +242,17 @@ async def generate_video(
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                video_data_raw = chain.invoke({"document_text": document_text[:MAX_DOCUMENT_LENGTH]})
+                raw_response = chain.invoke({"document_text": document_text[:MAX_DOCUMENT_LENGTH]})
+                
+                # Clean up response if LLM added markdown backticks
+                json_str = raw_response.strip()
+                if "```json" in json_str:
+                    json_str = json_str.split("```json")[1].split("```")[0].strip()
+                elif "```" in json_str:
+                    json_str = json_str.split("```")[1].strip()
+                
+                import json
+                video_data_raw = json.loads(json_str)
                 
                 # Handle dict with 'slides' key or just a straight list of slides
                 if isinstance(video_data_raw, dict) and "slides" in video_data_raw:
@@ -225,6 +271,18 @@ async def generate_video(
         if not slides:
             print(f"Failed to parse slides. Raw response: {video_data_raw}")
             raise HTTPException(status_code=500, detail="Failed to generate slide content from document")
+
+        # Normalize slides to list of dicts if they are Pydantic objects
+        normalized_slides = []
+        for s in slides:
+            if hasattr(s, "model_dump"):
+                normalized_slides.append(s.model_dump())
+            elif isinstance(s, dict):
+                normalized_slides.append(s)
+            else:
+                # Fallback for unexpected types
+                normalized_slides.append(dict(s))
+        slides = normalized_slides
 
         # 2. Process Slides (Audio + Images)
         video_clips = []
@@ -252,6 +310,8 @@ async def generate_video(
             clip = img_clip.with_audio(audio_clip)
             video_clips.append(clip)
             
+            # Do NOT close audio_clip or img_clip here as they are used in 'clip'
+            
         # 3. Assemble Video and Script
         final_video = concatenate_videoclips(video_clips, method="compose")
         base_name = f"video_{uuid.uuid4()}"
@@ -262,13 +322,31 @@ async def generate_video(
         # Generate Video
         final_video.write_videofile(video_output, fps=24, codec="libx264")
         
+        # Close all clips and release file locks
+        for clip in video_clips:
+            clip.close()
+        final_video.close()
+        
         # Generate TXT
         create_script_txt(slides, txt_output)
+
+        # 4. Generate Transcription
+        full_transcription = ""
+        for i in range(len(slides)):
+            audio_path = os.path.join(temp_dir, f"audio_{i}.mp3")
+            if os.path.exists(audio_path):
+                transcript = transcribe_audio(audio_path, GROQ_API_KEY)
+                full_transcription += f"Slide {i+1}:\n{transcript}\n\n"
+        
+        transcription_output = os.path.join(temp_dir, "transcription.txt")
+        with open(transcription_output, "w", encoding="utf-8") as f:
+            f.write(full_transcription)
 
         # Create ZIP Archive
         with zipfile.ZipFile(zip_output, 'w') as zipf:
             zipf.write(video_output, "educational_video.mp4")
-            zipf.write(txt_output, "script.txt")
+            zipf.write(txt_output, "slides_content.txt")
+            zipf.write(transcription_output, "transcription.txt")
 
         # Read the ZIP file into memory
         with open(zip_output, "rb") as f:
