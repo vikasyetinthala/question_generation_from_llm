@@ -10,6 +10,7 @@ import uvicorn
 import uuid
 import shutil
 import threading
+import zipfile
 from typing import List, Dict
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
@@ -251,23 +252,40 @@ async def generate_video(
             clip = img_clip.with_audio(audio_clip)
             video_clips.append(clip)
             
-        # 3. Assemble Video
+        # 3. Assemble Video and Script
         final_video = concatenate_videoclips(video_clips, method="compose")
-        output_filename = f"video_{uuid.uuid4()}.mp4"
-        final_video.write_videofile(output_filename, fps=24, codec="libx264")
+        base_name = f"video_{uuid.uuid4()}"
+        video_output = f"{base_name}.mp4"
+        txt_output = os.path.join(temp_dir, "script.txt")
+        zip_output = f"{base_name}.zip"
+
+        # Generate Video
+        final_video.write_videofile(video_output, fps=24, codec="libx264")
         
-        # Read the video file into memory before cleanup (fixes ephemeral filesystem issues on cloud)
-        with open(output_filename, "rb") as f:
-            video_bytes = f.read()
+        # Generate TXT
+        create_script_txt(slides, txt_output)
+
+        # Create ZIP Archive
+        with zipfile.ZipFile(zip_output, 'w') as zipf:
+            zipf.write(video_output, "educational_video.mp4")
+            zipf.write(txt_output, "script.txt")
+
+        # Read the ZIP file into memory
+        with open(zip_output, "rb") as f:
+            zip_bytes = f.read()
         
-        # Clean up temp files immediately
-        cleanup_files(output_filename, temp_dir)
+        # Clean up all temp files and the zip file itself
+        if os.path.exists(video_output):
+            os.remove(video_output)
+        if os.path.exists(zip_output):
+            os.remove(zip_output)
+        cleanup_files("", temp_dir) 
         
         import io as _io
         return StreamingResponse(
-            _io.BytesIO(video_bytes),
-            media_type="video/mp4",
-            headers={"Content-Disposition": "attachment; filename=educational_video.mp4"}
+            _io.BytesIO(zip_bytes),
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename=video_package_{uuid.uuid4().hex[:8]}.zip"}
         )
 
     except HTTPException:

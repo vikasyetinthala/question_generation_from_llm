@@ -130,13 +130,13 @@ Ensure all questions are relevant to '{topic}'."""
 
 
 # Video Prompt Template
-VIDEO_PROMPT_TEMPLATE = """You are an expert educator. Based on the following document content, create a structured script for a detailed educational video.
-The video should consist of at least 8 to 12 slides to ensure thorough coverage of the material. For each slide, provide:
+VIDEO_PROMPT_TEMPLATE = """You are an expert educator. Based on the following document content, create a structured script for a COMPREHENSIVE educational video.
+The video should consist of at least 15 to 20 slides to ensure every single detail and section of the material is covered thoroughly. For each slide, provide:
 1. A concise Title.
 2. 3-4 key Bullet Points. Make sure each bullet point is SHORT and CONCISE (maximum 12 words per bullet point).
 3. A spoken Script (what the narrator says).
 
-Ensure that the slides cover all major sections and important details from the document. Do not skip key concepts.
+CRITICAL: Do not summarize or skip any major sections. The video must cover all details from the input text to ensure a complete learning experience.
 
 Document:
 {document_text}

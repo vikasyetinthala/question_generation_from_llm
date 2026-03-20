@@ -20,6 +20,7 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 from gtts import gTTS
 from PIL import Image, ImageDraw, ImageFont
 from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
+import zipfile
 
 # ============================================================================
 # DOCUMENT UTILITIES
@@ -607,4 +608,26 @@ def parse_mcqs(text: str) -> list:
             })
     
     return mcqs
+
+
+
+
+def create_script_txt(slides: List[Dict], output_path: str):
+    """Create a plain text file containing the slide titles and scripts."""
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("VIDEO SCRIPT\n")
+        f.write("=" * 20 + "\n\n")
+        
+        for i, slide in enumerate(slides):
+            f.write(f"SLIDE {i+1}: {slide['title']}\n")
+            f.write("-" * (8 + len(str(i+1)) + len(slide['title'])) + "\n")
+            f.write(f"NARRATIVE: {slide['script']}\n\n")
+            
+            if slide.get('bullets'):
+                f.write("KEY POINTS:\n")
+                for bullet in slide['bullets']:
+                    f.write(f"  - {bullet}\n")
+                f.write("\n")
+            f.write("\n")
+
 
