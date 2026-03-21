@@ -10,7 +10,7 @@ from typing import List, Dict, Optional
 from pypdf import PdfReader
 import os 
 import shutil
-from src.config import LLM_CONFIG, MAX_DOCUMENT_LENGTH, ALLOWED_FILE_TYPES
+from src.config import LLM_CONFIG, MAX_DOCUMENT_LENGTH, ALLOWED_FILE_TYPES, SCRIPT_MODIFICATION_PROMPT_TEMPLATE
 
 from docx import Document
 from langchain_groq import ChatGroq
@@ -643,6 +643,51 @@ def create_script_txt(slides: List[Dict], output_path: str):
                 f.write("\n")
             f.write("\n")
 
+def parse_script_txt(content: str) -> List[Dict]:
+    """Parse the edited slides_content.txt back into a list of slide dictionaries."""
+    slides = []
+    # Split content into slides using "SLIDE X:" as delimiter
+    # Use regex to find "SLIDE " followed by a number and a colon
+    slide_blocks = re.split(r'SLIDE \d+:', content)
+    
+    # slide_blocks[0] will contain the header "VIDEO SCRIPT..."
+    for block in slide_blocks[1:]:
+        lines = block.strip().split('\n')
+        if not lines:
+            continue
+            
+        # First line is the title (as the "SLIDE X: " part was removed by split)
+        title = lines[0].strip()
+        script = ""
+        bullets = []
+        
+        current_section = None
+        for line in lines[1:]:
+            line = line.strip()
+            # Skip empty lines and separators
+            if not line or line.startswith('-' * 5):
+                continue
+            
+            if line.startswith("NARRATIVE:"):
+                script = line.replace("NARRATIVE:", "").strip()
+                current_section = "narrative"
+            elif line.startswith("KEY POINTS:"):
+                current_section = "bullets"
+            elif line.startswith("-") and current_section == "bullets":
+                # Remove the leading "-" and optional space
+                bullets.append(line[1:].strip())
+            elif current_section == "narrative":
+                # Handle multi-line narrative
+                script += " " + line
+                
+        if title:
+            slides.append({
+                "title": title,
+                "script": script.strip(),
+                "bullets": bullets
+            })
+    return slides
+
 
 def transcribe_audio(audio_path: str, groq_api_key: str) -> str:
     """
@@ -660,5 +705,27 @@ def transcribe_audio(audio_path: str, groq_api_key: str) -> str:
     except Exception as e:
         print(f"Transcription error for {audio_path}: {e}")
         return ""
+
+def modify_script_with_llm(script_text: str, user_prompt: str, groq_api_key: str, source_document: str = "") -> str:
+    """
+    Use LLM to modify the video script based on a user prompt and optional source document context.
+    """
+    llm = initialize_llm(groq_api_key)
+    prompt_template = PromptTemplate(
+        template=SCRIPT_MODIFICATION_PROMPT_TEMPLATE,
+        input_variables=["original_script", "user_prompt", "source_document"]
+    )
+    chain = prompt_template | llm | StrOutputParser()
+    
+    try:
+        modified_script = chain.invoke({
+            "original_script": script_text,
+            "user_prompt": user_prompt,
+            "source_document": source_document if source_document else "No source document provided."
+        })
+        return modified_script.strip()
+    except Exception as e:
+        print(f"Error modifying script with LLM: {e}")
+        raise RuntimeError(f"Failed to modify script: {e}")
 
 

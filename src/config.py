@@ -131,7 +131,7 @@ Ensure all questions are relevant to '{topic}'."""
 
 # Video Prompt Template
 VIDEO_PROMPT_TEMPLATE = """You are an expert educator. Based on the following document content, create a structured script for a COMPREHENSIVE educational video.
-The video should cover every section of the material thoroughly across 15 to 20 slides. 
+The video should cover every section of the material thoroughly across 8 to 12 slides. 
 
 For each slide, provide:
 1. A descriptive Title.
@@ -142,4 +142,24 @@ CRITICAL: The bullet points must be detailed and directly reflect the specific c
 
 Document:
 {document_text}
+"""
+
+# Script Modification Prompt Template
+SCRIPT_MODIFICATION_PROMPT_TEMPLATE = """
+You are an expert video script editor. You are given an educational video script and a modification prompt.
+You may also be provided with the source document for additional context.
+
+Modify the script according to the prompt while strictly maintaining the original format.
+
+Source Document Context (if any):
+{source_document}
+
+Original Script:
+{original_script}
+
+Modification Prompt:
+{user_prompt}
+
+CRITICAL: Output ONLY the modified script. Each slide MUST start with "SLIDE X: Title".
+Maintain the "NARRATIVE:" and "KEY POINTS:" sections for each slide.
 """
