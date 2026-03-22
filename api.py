@@ -61,11 +61,12 @@ app = FastAPI(
 # ============================================================================
 
 def _process_video_generation(
-    content: bytes, 
-    filename: str, 
+    content: Optional[bytes] = None, 
+    filename: Optional[str] = None, 
     prompt: Optional[str] = None, 
     is_script: bool = False,
-    source_document: str = ""
+    source_document: str = "",
+    preparsed_slides: Optional[List[Dict]] = None
 ) -> io.BytesIO:
     """Core logic to generate video and return ZIP buffer."""
     job_id = str(uuid.uuid4())
@@ -77,7 +78,9 @@ def _process_video_generation(
         slides = []
         
         # 1. Get Initial Slides
-        if not is_script:
+        if preparsed_slides:
+            slides = preparsed_slides
+        elif not is_script:
             document_text = extract_text_from_file(filename, content)
             llm = initialize_llm(GROQ_API_KEY)
             video_prompt = PromptTemplate(
@@ -271,6 +274,53 @@ async def regenerate_video(
             zip_buffer, 
             media_type="application/zip",
             headers={"Content-Disposition": f"attachment; filename=regenerated_video_package.zip"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/regenerate-from-transcription")
+async def regenerate_from_transcription(
+    transcription_file: UploadFile = File(...),
+    slides_file: UploadFile = File(...),
+    source_file: Optional[UploadFile] = File(None),
+    prompt: Optional[str] = Form(None)
+):
+    """Regenerate video from a transcription (.txt) and slides content (.txt) with an optional modification prompt."""
+    if not GROQ_API_KEY: 
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured in environment")
+    
+    # 1. Read files
+    transcription_content = (await transcription_file.read()).decode("utf-8")
+    slides_content = (await slides_file.read()).decode("utf-8")
+    
+    # 2. Extract source document context if provided
+    source_document_text = ""
+    if source_file:
+        source_bytes = await source_file.read()
+        source_document_text = extract_text_from_file(source_file.filename, source_bytes)
+    
+    # 3. Parse and Merge
+    from src.utils import parse_transcription_txt, merge_transcription_with_slides
+    
+    raw_slides = parse_script_txt(slides_content)
+    transcription_map = parse_transcription_txt(transcription_content)
+    merged_slides = merge_transcription_with_slides(raw_slides, transcription_map)
+    
+    if not merged_slides:
+        raise HTTPException(status_code=400, detail="Failed to parse slides or transcription content")
+
+    # 4. Process Video Generation
+    try:
+        zip_buffer = _process_video_generation(
+            prompt=prompt, 
+            is_script=False, 
+            source_document=source_document_text,
+            preparsed_slides=merged_slides
+        )
+        return StreamingResponse(
+            zip_buffer, 
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename=transcription_regenerated_video.zip"}
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

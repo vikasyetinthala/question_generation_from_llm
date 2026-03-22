@@ -712,6 +712,43 @@ def transcribe_audio(audio_path: str, groq_api_key: str) -> str:
         print(f"Transcription error for {audio_path}: {e}")
         return ""
 
+def parse_transcription_txt(content: str) -> Dict[int, str]:
+    """
+    Parse the transcription.txt file into a dictionary mapping slide index to text.
+    Expected format:
+    Slide 1:
+    [text]
+    
+    Slide 2:
+    [text]
+    """
+    transcription_map = {}
+    # Split by "Slide X:" pattern
+    blocks = re.split(r'Slide (\d+):', content)
+    
+    # blocks[0] is everything before the first "Slide X:"
+    for i in range(1, len(blocks), 2):
+        slide_num = int(blocks[i])
+        text = blocks[i+1].strip()
+        transcription_map[slide_num] = text
+        
+    return transcription_map
+
+def merge_transcription_with_slides(slides: List[Dict], transcription: Dict[int, str]) -> List[Dict]:
+    """
+    Update the 'script' field of each slide with text from the transcription map.
+    """
+    updated_slides = []
+    for i, slide in enumerate(slides):
+        slide_num = i + 1
+        new_script = transcription.get(slide_num, slide.get('script', ''))
+        
+        updated_slide = slide.copy()
+        updated_slide['script'] = new_script
+        updated_slides.append(updated_slide)
+        
+    return updated_slides
+
 def modify_script_with_llm(script_text: str, user_prompt: str, groq_api_key: str, source_document: str = "") -> str:
     """
     Use LLM to modify the video script based on a user prompt and optional source document context.
