@@ -372,22 +372,28 @@ def clean_text(text: str) -> str:
 
 def cleanup_files(filepath: str, dirpath: str):
     """Delete the generated video file and temporary directory."""
+    import gc
+    import time
+    # Force GC to release any file handles held by objects
+    gc.collect()
+    
     try:
         if filepath and os.path.exists(filepath):
-            try:
-                os.remove(filepath)
-            except Exception as e:
-                print(f"Warning: Could not remove file {filepath}: {e}")
+            # Try a couple of times for Windows locks
+            for _ in range(3):
+                try:
+                    os.remove(filepath)
+                    break
+                except Exception:
+                    time.sleep(0.5)
                 
         if dirpath and os.path.exists(dirpath):
-            # Use ignore_errors=True for Windows file locks
-            shutil.rmtree(dirpath, ignore_errors=True)
-            
-            # If still exists, try one more time after a short delay (optional)
-            if os.path.exists(dirpath):
-                import time
-                time.sleep(0.5)
+            # Try a couple of times for Windows locks
+            for _ in range(3):
                 shutil.rmtree(dirpath, ignore_errors=True)
+                if not os.path.exists(dirpath):
+                    break
+                time.sleep(0.5)
     except Exception as e:
         print(f"Error during cleanup: {e}")
 
