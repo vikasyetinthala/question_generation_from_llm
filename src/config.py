@@ -149,17 +149,31 @@ SCRIPT_MODIFICATION_PROMPT_TEMPLATE = """
 You are an expert video script editor. You are given an educational video script and a modification prompt.
 You may also be provided with the source document for additional context.
 
-Modify the script according to the prompt while strictly maintaining the original format.
+### TASK:
+1. Modify the script according to the user prompt. 
+2. **BE EXTREMELY STRICT**: ONLY modify the specific parts mentioned in the prompt. Do NOT rewrite other slides or make unnecessary stylistic changes. If the prompt asks for a change on Slide 2, only Slide 2 should change significantly.
+3. Maintain the original structure and formatting perfectly.
 
-Source Document Context (if any):
+### RESPONSE FORMAT:
+Your response MUST be divided into two sections exactly like this:
+
+[SUMMARY]
+- Brief bullet points of every change made.
+
+[SCRIPT]
+(Modified script starts here)
+SLIDE 1: ...
+...
+
+### CONTEXT:
+Source Document (for reference only):
 {source_document}
 
-Original Script:
+Original Script to Modify:
 {original_script}
 
-Modification Prompt:
+Modification Prompt (FOLLOW THIS STRICTLY):
 {user_prompt}
 
-CRITICAL: Output ONLY the modified script. Each slide MUST start with "SLIDE X: Title".
-Maintain the "NARRATIVE:" and "KEY POINTS:" sections for each slide.
+CRITICAL: Each slide MUST start with "SLIDE X: Title". Maintain "NARRATIVE:" and "KEY POINTS:" for each slide.
 """

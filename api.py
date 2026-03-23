@@ -123,7 +123,15 @@ def _process_video_generation(
             with open(script_path, "r", encoding="utf-8") as f:
                 current_script = f.read()
             
-            modified_script = modify_script_with_llm(current_script, prompt, GROQ_API_KEY, source_document)
+            modified_script, modification_summary = modify_script_with_llm(current_script, prompt, GROQ_API_KEY, source_document)
+            
+            # Save modification summary
+            summary_path = os.path.join(temp_dir, "modification_summary.txt")
+            with open(summary_path, "w", encoding="utf-8") as f:
+                f.write("MODIFICATION SUMMARY\n")
+                f.write("=" * 20 + "\n\n")
+                f.write(modification_summary)
+            
             slides = parse_script_txt(modified_script)
             if not slides:
                 raise RuntimeError("Failed to parse modified script")
@@ -182,6 +190,12 @@ def _process_video_generation(
                 zipf.writestr("slides_content.txt", f.read())
             
             zipf.writestr("transcription.txt", full_transcription)
+            
+            # Include modification summary if it exists
+            summary_path = os.path.join(temp_dir, "modification_summary.txt")
+            if os.path.exists(summary_path):
+                with open(summary_path, "rb") as f:
+                    zipf.writestr("modification_summary.txt", f.read())
         
         zip_buffer.seek(0)
         return zip_buffer

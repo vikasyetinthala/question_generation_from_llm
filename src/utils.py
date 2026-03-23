@@ -749,9 +749,10 @@ def merge_transcription_with_slides(slides: List[Dict], transcription: Dict[int,
         
     return updated_slides
 
-def modify_script_with_llm(script_text: str, user_prompt: str, groq_api_key: str, source_document: str = "") -> str:
+def modify_script_with_llm(script_text: str, user_prompt: str, groq_api_key: str, source_document: str = "") -> tuple:
     """
     Use LLM to modify the video script based on a user prompt and optional source document context.
+    Returns (modified_script, modification_summary).
     """
     llm = initialize_llm(groq_api_key)
     prompt_template = PromptTemplate(
@@ -761,12 +762,25 @@ def modify_script_with_llm(script_text: str, user_prompt: str, groq_api_key: str
     chain = prompt_template | llm | StrOutputParser()
     
     try:
-        modified_script = chain.invoke({
+        raw_response = chain.invoke({
             "original_script": script_text,
             "user_prompt": user_prompt,
             "source_document": source_document if source_document else "No source document provided."
         })
-        return modified_script.strip()
+        
+        raw_response = raw_response.strip()
+        summary = "No summary provided."
+        modified_script = raw_response
+        
+        if "[SUMMARY]" in raw_response and "[SCRIPT]" in raw_response:
+            try:
+                parts = raw_response.split("[SCRIPT]")
+                summary = parts[0].replace("[SUMMARY]", "").strip()
+                modified_script = parts[1].strip()
+            except Exception as e:
+                print(f"Error parsing LLM response parts: {e}")
+        
+        return modified_script, summary
     except Exception as e:
         print(f"Error modifying script with LLM: {e}")
         raise RuntimeError(f"Failed to modify script: {e}")
