@@ -510,8 +510,8 @@ def create_prompt_chain(llm):
     return prompt | llm | StrOutputParser()
 
 
-def create_slide_image(title, bullets, output_path, logo_path=None):
-    """Create a slide image using Pillow with text wrapping."""
+def create_slide_image(title, bullets, output_path, logo_path=None, flowchart=None):
+    """Create a slide image using Pillow with text wrapping. Optionally renders a flowchart."""
     width, height = 1280, 720
     background_color = (30, 30, 30)
     text_color = (255, 255, 255)
@@ -524,9 +524,11 @@ def create_slide_image(title, bullets, output_path, logo_path=None):
     try:
         title_font = ImageFont.truetype("arial.ttf", 48)
         content_font = ImageFont.truetype("arial.ttf", 32)
+        flow_font = ImageFont.truetype("arial.ttf", 22)
     except:
         title_font = ImageFont.load_default()
         content_font = ImageFont.load_default()
+        flow_font = ImageFont.load_default()
         
     import textwrap
     import os
@@ -564,20 +566,92 @@ def create_slide_image(title, bullets, output_path, logo_path=None):
         
     y_offset += 10
     draw.line((80, y_offset, divider_end, y_offset), fill=accent_color, width=3)
+    y_offset += 30
     
-    # Draw Bullets
-    y_offset += 40
-    # Bullet chars: font size 32 ~9px/char, safe width to 1100px
-    safe_bullet_chars = int((width - 140) / 18)
-    for bullet in bullets:
-        bullet_wrapped = textwrap.wrap(f"• {bullet}", width=safe_bullet_chars)
-        for i, line in enumerate(bullet_wrapped):
-            indent = 0 if i == 0 else 20
-            draw.text((100 + indent, y_offset), line, font=content_font, fill=text_color)
-            y_offset += 45
-        y_offset += 20  # Add extra spacing between bullets
+    if flowchart and len(flowchart) >= 2:
+        # --- Draw Flowchart ---
+        _draw_flowchart(draw, flowchart, y_offset, width, height, flow_font, accent_color, text_color)
+        
+        # Draw bullets below flowchart in a smaller area if space allows
+        flowchart_height = 180
+        bullet_y = y_offset + flowchart_height
+        if bullet_y < height - 80:
+            safe_bullet_chars = int((width - 140) / 18)
+            for bullet in bullets:
+                if bullet_y >= height - 60:
+                    break
+                bullet_wrapped = textwrap.wrap(f"\u2022 {bullet}", width=safe_bullet_chars)
+                for i, line in enumerate(bullet_wrapped[:1]):  # max 1 line per bullet in compact mode
+                    draw.text((100, bullet_y), line, font=content_font, fill=text_color)
+                    bullet_y += 42
+    else:
+        # --- Draw Bullets ---
+        safe_bullet_chars = int((width - 140) / 18)
+        for bullet in bullets:
+            bullet_wrapped = textwrap.wrap(f"\u2022 {bullet}", width=safe_bullet_chars)
+            for i, line in enumerate(bullet_wrapped):
+                indent = 0 if i == 0 else 20
+                draw.text((100 + indent, y_offset), line, font=content_font, fill=text_color)
+                y_offset += 45
+            y_offset += 20  # Add extra spacing between bullets
         
     img.save(output_path)
+
+
+def _draw_flowchart(draw, steps, y_start, canvas_width, canvas_height, font, accent_color, text_color):
+    """Draw a horizontal flowchart with boxes and arrows on the slide."""
+    import textwrap
+    
+    n = len(steps)
+    # Clamp to reasonable display count
+    steps = steps[:6]
+    n = len(steps)
+    
+    box_w = min(160, (canvas_width - 160) // n - 30)
+    box_h = 70
+    arrow_w = 28
+    gap = 10  # gap between box and arrow
+    
+    total_w = n * box_w + (n - 1) * (arrow_w + 2 * gap)
+    x_start = (canvas_width - total_w) // 2
+    y_center = y_start + 60
+    
+    for i, step in enumerate(steps):
+        bx = x_start + i * (box_w + arrow_w + 2 * gap)
+        by = y_center
+        
+        # Draw rounded box
+        box_rect = [bx, by, bx + box_w, by + box_h]
+        draw.rounded_rectangle(box_rect, radius=10, fill=(0, 80, 160), outline=accent_color, width=2)
+        
+        # Draw step text (wrapped)
+        words = textwrap.wrap(step, width=max(8, box_w // 13))
+        line_h = 20
+        text_block_h = len(words) * line_h
+        ty = by + (box_h - text_block_h) // 2
+        for word_line in words:
+            try:
+                bbox = draw.textbbox((0, 0), word_line, font=font)
+                tw = bbox[2] - bbox[0]
+            except Exception:
+                tw = len(word_line) * 10
+            tx = bx + (box_w - tw) // 2
+            draw.text((tx, ty), word_line, font=font, fill=text_color)
+            ty += line_h
+        
+        # Draw arrow to next box
+        if i < n - 1:
+            ax_start = bx + box_w + gap
+            ax_end = ax_start + arrow_w
+            ay = by + box_h // 2
+            draw.line([(ax_start, ay), (ax_end, ay)], fill=accent_color, width=3)
+            # Arrowhead
+            draw.polygon([
+                (ax_end, ay),
+                (ax_end - 8, ay - 6),
+                (ax_end - 8, ay + 6)
+            ], fill=accent_color)
+
 
 
 def parse_mcqs(text: str) -> list:
@@ -632,7 +706,7 @@ def parse_mcqs(text: str) -> list:
 
 
 def create_script_txt(slides: List[Dict], output_path: str):
-    """Create a plain text file containing the slide titles and scripts."""
+    """Create a plain text file containing the slide titles, scripts, and optional flowchart."""
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("VIDEO SCRIPT\n")
         f.write("=" * 20 + "\n\n")
@@ -647,6 +721,13 @@ def create_script_txt(slides: List[Dict], output_path: str):
                 for bullet in slide['bullets']:
                     f.write(f"  - {bullet}\n")
                 f.write("\n")
+            
+            if slide.get('flowchart'):
+                f.write("FLOWCHART:\n")
+                for step in slide['flowchart']:
+                    f.write(f"  > {step}\n")
+                f.write("\n")
+            
             f.write("\n")
 
 def parse_script_txt(content: str) -> List[Dict]:
@@ -666,6 +747,7 @@ def parse_script_txt(content: str) -> List[Dict]:
         title = lines[0].strip()
         script = ""
         bullets = []
+        flowchart = []
         
         current_section = None
         for line in lines[1:]:
@@ -679,25 +761,34 @@ def parse_script_txt(content: str) -> List[Dict]:
                 current_section = "narrative"
             elif line.startswith("KEY POINTS:"):
                 current_section = "bullets"
+            elif line.startswith("FLOWCHART:"):
+                current_section = "flowchart"
             elif line.startswith("-") and current_section == "bullets":
                 # Remove the leading "-" and optional space
                 bullets.append(line[1:].strip())
+            elif line.startswith(">") and current_section == "flowchart":
+                # Remove the leading ">" and optional space
+                flowchart.append(line[1:].strip())
             elif current_section == "narrative":
                 # Handle multi-line narrative
                 script += " " + line
                 
         if title:
-            slides.append({
+            slide_dict = {
                 "title": title,
                 "script": script.strip(),
                 "bullets": bullets
-            })
+            }
+            if flowchart:
+                slide_dict["flowchart"] = flowchart
+            slides.append(slide_dict)
     return slides
 
 
 def transcribe_audio(audio_path: str, groq_api_key: str) -> str:
     """
     Transcribe audio file using Groq Whisper model.
+    Returns plain text transcription.
     """
     client = Groq(api_key=groq_api_key)
     try:
@@ -711,6 +802,92 @@ def transcribe_audio(audio_path: str, groq_api_key: str) -> str:
     except Exception as e:
         print(f"Transcription error for {audio_path}: {e}")
         return ""
+
+
+def transcribe_audio_with_timestamps(audio_path: str, groq_api_key: str) -> list:
+    """
+    Transcribe audio using Groq Whisper and return segment-level timestamps.
+    Returns a list of dicts: [{start, end, text}, ...]
+    """
+    client = Groq(api_key=groq_api_key)
+    try:
+        with open(audio_path, "rb") as file:
+            result = client.audio.transcriptions.create(
+                file=(audio_path, file.read()),
+                model="whisper-large-v3",
+                response_format="verbose_json",
+                timestamp_granularities=["segment"]
+            )
+        segments = []
+        if hasattr(result, 'segments') and result.segments:
+            for seg in result.segments:
+                # Groq SDK may return segments as dicts or as objects
+                def _get(s, key):
+                    return s[key] if isinstance(s, dict) else getattr(s, key)
+                segments.append({
+                    "start": _get(seg, "start"),
+                    "end": _get(seg, "end"),
+                    "text": _get(seg, "text").strip()
+                })
+        return segments
+    except Exception as e:
+        print(f"Timestamped transcription error for {audio_path}: {e}")
+        return []
+
+
+def create_subtitle_clip(text: str, start: float, duration: float, width: int = 1280, height: int = 720):
+    """
+    Create a MoviePy ImageClip that renders a subtitle bar at the bottom of the frame.
+    Returns an ImageClip positioned at the bottom of the slide.
+    """
+    import numpy as np
+    import textwrap
+    from moviepy import ImageClip as MpImageClip
+
+    bar_height = 80
+    padding = 12
+
+    # Create full-size transparent RGBA image
+    img = Image.new("RGBA", (width, bar_height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # Semi-transparent black bar background
+    draw.rectangle([0, 0, width, bar_height], fill=(0, 0, 0, 180))
+
+    # Font
+    try:
+        font = ImageFont.truetype("arial.ttf", 28)
+    except Exception:
+        font = ImageFont.load_default()
+
+    # Wrap text
+    wrapped = textwrap.fill(text, width=90)
+    lines = wrapped.split("\n")
+
+    # Draw each line centered
+    line_h = 32
+    total_h = len(lines) * line_h
+    y = (bar_height - total_h) // 2
+    for line in lines:
+        try:
+            bbox = draw.textbbox((0, 0), line, font=font)
+            tw = bbox[2] - bbox[0]
+        except Exception:
+            tw = len(line) * 15
+        x = (width - tw) // 2
+        # Draw shadow for readability
+        draw.text((x + 1, y + 1), line, font=font, fill=(0, 0, 0, 255))
+        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+        y += line_h
+
+    # Convert RGBA PIL to RGB numpy array (MoviePy needs RGB)
+    img_rgb = Image.new("RGB", (width, bar_height), (0, 0, 0))
+    img_rgb.paste(img, mask=img.split()[3])  # use alpha as mask
+    frame = np.array(img_rgb)
+
+    bottom_margin = 60  # lift subtitles above the video player controls bar
+    clip = MpImageClip(frame).with_duration(duration).with_start(start).with_position((0, height - bar_height - bottom_margin))
+    return clip
 
 def parse_transcription_txt(content: str) -> Dict[int, str]:
     """

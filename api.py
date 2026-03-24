@@ -14,7 +14,7 @@ import json
 from typing import List, Dict, Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Header, Form
 from gtts import gTTS
-from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
+from moviepy import ImageClip, AudioFileClip, concatenate_videoclips, CompositeVideoClip
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
@@ -29,7 +29,9 @@ from src.utils import (
     validate_file, 
     create_slide_image, 
     create_script_txt, 
-    transcribe_audio, 
+    transcribe_audio,
+    transcribe_audio_with_timestamps,
+    create_subtitle_clip,
     cleanup_files, 
     parse_script_txt,
     modify_script_with_llm
@@ -152,13 +154,40 @@ def _process_video_generation(
                 if os.path.exists(f"logo.{ext}"):
                     logo_path = f"logo.{ext}"
                     break
-            create_slide_image(slide['title'], slide['bullets'], img_path, logo_path=logo_path)
+            create_slide_image(slide['title'], slide['bullets'], img_path, logo_path=logo_path, flowchart=slide.get('flowchart'))
             
-            # Clip
+            # Clip base
             audio_clip = AudioFileClip(audio_path)
             img_clip = ImageClip(img_path).with_duration(audio_clip.duration)
-            clip = img_clip.with_audio(audio_clip)
+            
+            # Subtitle clips via Whisper timestamps
+            segments = transcribe_audio_with_timestamps(audio_path, GROQ_API_KEY)
+            slide_clip_base = img_clip.with_audio(audio_clip)
+            
+            if segments:
+                subtitle_clips = []
+                for seg in segments:
+                    seg_start = seg["start"]
+                    seg_end = min(seg["end"], audio_clip.duration)
+                    seg_dur = max(0.1, seg_end - seg_start)
+                    sub_clip = create_subtitle_clip(
+                        text=seg["text"],
+                        start=seg_start,
+                        duration=seg_dur
+                    )
+                    subtitle_clips.append(sub_clip)
+                clip = CompositeVideoClip([slide_clip_base] + subtitle_clips)
+            else:
+                # Fallback: show full script as single subtitle
+                sub_clip = create_subtitle_clip(
+                    text=slide['script'],
+                    start=0,
+                    duration=audio_clip.duration
+                )
+                clip = CompositeVideoClip([slide_clip_base, sub_clip])
+            
             video_clips.append(clip)
+
 
         final_video = concatenate_videoclips(video_clips, method="compose")
         final_video.write_videofile(
