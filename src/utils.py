@@ -571,8 +571,12 @@ def create_slide_image(title, bullets, output_path, logo_path=None):
     # --- Draw Bullets ---
     safe_bullet_chars = int((width - 140) / 18)
     for bullet in bullets:
+        if y_offset > height - 130:
+            break
         bullet_wrapped = textwrap.wrap(f"\u2022 {bullet}", width=safe_bullet_chars)
         for i, line in enumerate(bullet_wrapped):
+            if y_offset > height - 130:
+                break
             indent = 0 if i == 0 else 20
             draw.text((100 + indent, y_offset), line, font=content_font, fill=text_color)
             y_offset += 45
@@ -804,7 +808,7 @@ def create_subtitle_clip(text: str, start: float, duration: float, width: int = 
     img_rgb.paste(img, mask=img.split()[3])  # use alpha as mask
     frame = np.array(img_rgb)
 
-    bottom_margin = 60  # lift subtitles above the video player controls bar
+    bottom_margin = 80  # lift subtitles just above the bottom edge but avoid overlapping slide content
     clip = MpImageClip(frame).with_duration(duration).with_start(start).with_position((0, height - bar_height - bottom_margin))
     return clip
 
