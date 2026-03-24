@@ -154,7 +154,7 @@ def _process_video_generation(
                 if os.path.exists(f"logo.{ext}"):
                     logo_path = f"logo.{ext}"
                     break
-            create_slide_image(slide['title'], slide['bullets'], img_path, logo_path=logo_path, flowchart=slide.get('flowchart'))
+            create_slide_image(slide['title'], slide['bullets'], img_path, logo_path=logo_path)
             
             # Clip base
             audio_clip = AudioFileClip(audio_path)

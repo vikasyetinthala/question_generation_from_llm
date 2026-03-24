@@ -137,12 +137,10 @@ For each slide, provide:
 1. A descriptive Title.
 2. 3-5 Bullet Points — each bullet should be a concise phrase of 8-12 words. Capture the key idea clearly without being a wall of text. Do NOT write long sentences.
 3. A detailed spoken Script (what the narrator says).
-4. OPTIONAL - Flowchart: If the slide content describes a sequential process, workflow, or steps, add a "flowchart" field with 3-6 SHORT step labels (max 4-5 words each). Only include this when the content is naturally a flow/process. Skip it for conceptual/definition slides.
 
-CRITICAL: Keep bullets CONCISE (8-12 words). Flowchart steps must be very short labels only.
+CRITICAL: Keep bullets CONCISE (8-15 words).
 Output ONLY a valid JSON object. Format:
-{{"slides": [{{"title": "Slide Title", "bullets": ["Short point here"], "script": "Narrator script...", "flowchart": ["Step 1 label", "Step 2 label"]}}]}}
-For slides without a flowchart, omit the "flowchart" key entirely.
+{{"slides": [{{"title": "Slide Title", "bullets": ["Short point here"], "script": "Narrator script..."}}]}}
 
 Document:
 {document_text}

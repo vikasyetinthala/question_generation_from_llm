@@ -510,8 +510,8 @@ def create_prompt_chain(llm):
     return prompt | llm | StrOutputParser()
 
 
-def create_slide_image(title, bullets, output_path, logo_path=None, flowchart=None):
-    """Create a slide image using Pillow with text wrapping. Optionally renders a flowchart."""
+def create_slide_image(title, bullets, output_path, logo_path=None):
+    """Create a slide image using Pillow with text wrapping."""
     width, height = 1280, 720
     background_color = (30, 30, 30)
     text_color = (255, 255, 255)
@@ -568,89 +568,20 @@ def create_slide_image(title, bullets, output_path, logo_path=None, flowchart=No
     draw.line((80, y_offset, divider_end, y_offset), fill=accent_color, width=3)
     y_offset += 30
     
-    if flowchart and len(flowchart) >= 2:
-        # --- Draw Flowchart ---
-        _draw_flowchart(draw, flowchart, y_offset, width, height, flow_font, accent_color, text_color)
-        
-        # Draw bullets below flowchart in a smaller area if space allows
-        flowchart_height = 180
-        bullet_y = y_offset + flowchart_height
-        if bullet_y < height - 80:
-            safe_bullet_chars = int((width - 140) / 18)
-            for bullet in bullets:
-                if bullet_y >= height - 60:
-                    break
-                bullet_wrapped = textwrap.wrap(f"\u2022 {bullet}", width=safe_bullet_chars)
-                for i, line in enumerate(bullet_wrapped[:1]):  # max 1 line per bullet in compact mode
-                    draw.text((100, bullet_y), line, font=content_font, fill=text_color)
-                    bullet_y += 42
-    else:
-        # --- Draw Bullets ---
-        safe_bullet_chars = int((width - 140) / 18)
-        for bullet in bullets:
-            bullet_wrapped = textwrap.wrap(f"\u2022 {bullet}", width=safe_bullet_chars)
-            for i, line in enumerate(bullet_wrapped):
-                indent = 0 if i == 0 else 20
-                draw.text((100 + indent, y_offset), line, font=content_font, fill=text_color)
-                y_offset += 45
-            y_offset += 20  # Add extra spacing between bullets
+    # --- Draw Bullets ---
+    safe_bullet_chars = int((width - 140) / 18)
+    for bullet in bullets:
+        bullet_wrapped = textwrap.wrap(f"\u2022 {bullet}", width=safe_bullet_chars)
+        for i, line in enumerate(bullet_wrapped):
+            indent = 0 if i == 0 else 20
+            draw.text((100 + indent, y_offset), line, font=content_font, fill=text_color)
+            y_offset += 45
+        y_offset += 20  # Add extra spacing between bullets
         
     img.save(output_path)
 
 
-def _draw_flowchart(draw, steps, y_start, canvas_width, canvas_height, font, accent_color, text_color):
-    """Draw a horizontal flowchart with boxes and arrows on the slide."""
-    import textwrap
-    
-    n = len(steps)
-    # Clamp to reasonable display count
-    steps = steps[:6]
-    n = len(steps)
-    
-    box_w = min(160, (canvas_width - 160) // n - 30)
-    box_h = 70
-    arrow_w = 28
-    gap = 10  # gap between box and arrow
-    
-    total_w = n * box_w + (n - 1) * (arrow_w + 2 * gap)
-    x_start = (canvas_width - total_w) // 2
-    y_center = y_start + 60
-    
-    for i, step in enumerate(steps):
-        bx = x_start + i * (box_w + arrow_w + 2 * gap)
-        by = y_center
-        
-        # Draw rounded box
-        box_rect = [bx, by, bx + box_w, by + box_h]
-        draw.rounded_rectangle(box_rect, radius=10, fill=(0, 80, 160), outline=accent_color, width=2)
-        
-        # Draw step text (wrapped)
-        words = textwrap.wrap(step, width=max(8, box_w // 13))
-        line_h = 20
-        text_block_h = len(words) * line_h
-        ty = by + (box_h - text_block_h) // 2
-        for word_line in words:
-            try:
-                bbox = draw.textbbox((0, 0), word_line, font=font)
-                tw = bbox[2] - bbox[0]
-            except Exception:
-                tw = len(word_line) * 10
-            tx = bx + (box_w - tw) // 2
-            draw.text((tx, ty), word_line, font=font, fill=text_color)
-            ty += line_h
-        
-        # Draw arrow to next box
-        if i < n - 1:
-            ax_start = bx + box_w + gap
-            ax_end = ax_start + arrow_w
-            ay = by + box_h // 2
-            draw.line([(ax_start, ay), (ax_end, ay)], fill=accent_color, width=3)
-            # Arrowhead
-            draw.polygon([
-                (ax_end, ay),
-                (ax_end - 8, ay - 6),
-                (ax_end - 8, ay + 6)
-            ], fill=accent_color)
+
 
 
 
@@ -706,7 +637,7 @@ def parse_mcqs(text: str) -> list:
 
 
 def create_script_txt(slides: List[Dict], output_path: str):
-    """Create a plain text file containing the slide titles, scripts, and optional flowchart."""
+    """Create a plain text file containing the slide titles and scripts."""
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("VIDEO SCRIPT\n")
         f.write("=" * 20 + "\n\n")
@@ -722,11 +653,7 @@ def create_script_txt(slides: List[Dict], output_path: str):
                     f.write(f"  - {bullet}\n")
                 f.write("\n")
             
-            if slide.get('flowchart'):
-                f.write("FLOWCHART:\n")
-                for step in slide['flowchart']:
-                    f.write(f"  > {step}\n")
-                f.write("\n")
+
             
             f.write("\n")
 
@@ -747,7 +674,6 @@ def parse_script_txt(content: str) -> List[Dict]:
         title = lines[0].strip()
         script = ""
         bullets = []
-        flowchart = []
         
         current_section = None
         for line in lines[1:]:
@@ -761,14 +687,9 @@ def parse_script_txt(content: str) -> List[Dict]:
                 current_section = "narrative"
             elif line.startswith("KEY POINTS:"):
                 current_section = "bullets"
-            elif line.startswith("FLOWCHART:"):
-                current_section = "flowchart"
             elif line.startswith("-") and current_section == "bullets":
                 # Remove the leading "-" and optional space
                 bullets.append(line[1:].strip())
-            elif line.startswith(">") and current_section == "flowchart":
-                # Remove the leading ">" and optional space
-                flowchart.append(line[1:].strip())
             elif current_section == "narrative":
                 # Handle multi-line narrative
                 script += " " + line
@@ -779,8 +700,6 @@ def parse_script_txt(content: str) -> List[Dict]:
                 "script": script.strip(),
                 "bullets": bullets
             }
-            if flowchart:
-                slide_dict["flowchart"] = flowchart
             slides.append(slide_dict)
     return slides
 
