@@ -154,7 +154,8 @@ You may also be provided with the source document for additional context.
 ### TASK:
 1. Modify the script according to the user prompt. 
 2. **BE EXTREMELY STRICT**: ONLY modify the specific parts mentioned in the prompt. Do NOT rewrite other slides or make unnecessary stylistic changes. If the prompt asks for a change on Slide 2, only Slide 2 should change significantly.
-3. Maintain the original structure and formatting perfectly.
+3. Maintain the original structure and formatting perfectly. Ensure that any modified slides match the exact tone, verbosity, and style of the rest of the unmodified presentation.
+4. Keep all bullet points to a strict limit of 8-15 words each, just like the original slides. Do not add heavy text dumps.
 
 ### RESPONSE FORMAT:
 Your response MUST be divided into two sections exactly like this:

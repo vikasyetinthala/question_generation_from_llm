@@ -510,78 +510,106 @@ def create_prompt_chain(llm):
     return prompt | llm | StrOutputParser()
 
 
+def draw_rounded_rectangle(draw, xy, corner_radius, fill=None, outline=None):
+    """Draw a rounded rectangle."""
+    upper_left_point = xy[0]
+    bottom_right_point = xy[1]
+    draw.pieslice([upper_left_point, (upper_left_point[0] + corner_radius * 2, upper_left_point[1] + corner_radius * 2)],
+                  180, 270, fill=fill, outline=outline)
+    draw.pieslice([(bottom_right_point[0] - corner_radius * 2, upper_left_point[1]), (bottom_right_point[0], upper_left_point[1] + corner_radius * 2)],
+                  270, 360, fill=fill, outline=outline)
+    draw.pieslice([(upper_left_point[0], bottom_right_point[1] - corner_radius * 2), (upper_left_point[0] + corner_radius * 2, bottom_right_point[1])],
+                  90, 180, fill=fill, outline=outline)
+    draw.pieslice([(bottom_right_point[0] - corner_radius * 2, bottom_right_point[1] - corner_radius * 2), (bottom_right_point[0], bottom_right_point[1])],
+                  0, 90, fill=fill, outline=outline)
+    draw.rectangle([(upper_left_point[0], upper_left_point[1] + corner_radius), (bottom_right_point[0], bottom_right_point[1] - corner_radius)],
+                   fill=fill, outline=outline)
+    draw.rectangle([(upper_left_point[0] + corner_radius, upper_left_point[1]), (bottom_right_point[0] - corner_radius, bottom_right_point[1])],
+                   fill=fill, outline=outline)
+
 def create_slide_image(title, bullets, output_path, logo_path=None):
-    """Create a slide image using Pillow with text wrapping."""
-    width, height = 1280, 720
-    background_color = (30, 30, 30)
-    text_color = (255, 255, 255)
-    accent_color = (0, 150, 255)
-    
-    img = Image.new('RGB', (width, height), color=background_color)
-    draw = ImageDraw.Draw(img)
-    
-    # Use default font if custom font not found
-    try:
-        title_font = ImageFont.truetype("arial.ttf", 48)
-        content_font = ImageFont.truetype("arial.ttf", 32)
-        flow_font = ImageFont.truetype("arial.ttf", 22)
-    except:
-        title_font = ImageFont.load_default()
-        content_font = ImageFont.load_default()
-        flow_font = ImageFont.load_default()
-        
+    """Create a slide image using Pillow with custom green wave aesthetic."""
+    import math
     import textwrap
     import os
     
-    # Check if a logo path is provided and exists
+    width, height = 1280, 720
+    
+    # White background for contrast
+    img = Image.new('RGB', (width, height), color=(255, 255, 255))
+    overlay = Image.new('RGBA', (width, height), (0,0,0,0))
+    draw = ImageDraw.Draw(overlay)
+    
+    c_green = (85, 175, 90)
+    
+    # Top Banner - Height 160
+    draw.rectangle([0, 0, width, 160], fill=c_green)
+    
+    # Bottom Banner - Height 55
+    draw.rectangle([0, height-55, width, height], fill=c_green)
+    
+    # Add Logo White Box (Rounded Rectangle) - Increased Size
+    box_w, box_h = 150, 150
+    box_x = width - box_w - 40
+    box_y = 10
+    draw_rounded_rectangle(draw, [(box_x, box_y), (box_x + box_w, box_y + box_h)], corner_radius=10, fill=(255, 255, 255, 255))
+
+    img.paste(overlay, mask=overlay)
+    draw = ImageDraw.Draw(img)
+
     if logo_path and os.path.exists(logo_path):
         try:
             logo = Image.open(logo_path).convert("RGBA")
-            # Resize the logo to fit nicely (e.g. height 100)
-            aspect_ratio = logo.width / logo.height
-            new_height = 100
-            new_width = int(new_height * aspect_ratio)
-            logo = logo.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            # Resize logo to fit inside the white box with padding
+            max_size = 135
+            logo.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
             
-            # Position it at the top-right corner
-            # 40px margins from the top and right
-            img.paste(logo, (width - new_width - 40, 40), logo)
+            logo_x = box_x + (box_w - logo.width) // 2
+            logo_y = box_y + (box_h - logo.height) // 2
+            
+            # Use 'logo' as mask if it has an alpha channel, else paste normally
+            img.paste(logo, (logo_x, logo_y), mask=logo if logo.mode == 'RGBA' else None)
         except Exception as e:
             print(f"Error drawing logo: {e}")
-    
-    # Calculate safe text area (leave right margin for logo)
-    logo_reserved_width = 220  # width reserved for logo in top-right
-    text_safe_width = width - logo_reserved_width  # usable text area width
-    divider_end = text_safe_width - 20
-    
-    # Approximate chars per line based on font size 48 and safe width (~14px/char)
-    safe_title_chars = int(text_safe_width / 27)
 
-    # Draw Title
-    title_wrapped = textwrap.wrap(title, width=safe_title_chars)
-    y_offset = 60
-    for line in title_wrapped:
-        draw.text((80, y_offset), line, font=title_font, fill=accent_color)
-        y_offset += 60
+    # Use bold for title
+    try:
+        # Increased title size to 42 for better presence as in sample_template.png
+        title_font = ImageFont.truetype("arialbd.ttf", 42)
+        content_font = ImageFont.truetype("arial.ttf", 28)
+    except:
+        title_font = ImageFont.load_default()
+        content_font = ImageFont.load_default()
         
-    y_offset += 10
-    draw.line((80, y_offset, divider_end, y_offset), fill=accent_color, width=3)
-    y_offset += 30
+    # Text colors
+    title_color = (255, 255, 255)
+    text_color = (0, 0, 0)
     
+    # Title wrapping - slightly wider for larger font
+    title_wrapped = textwrap.wrap(title, width=32)
+    y_offset = 45 # Adjusted for 160px header
+    if len(title_wrapped) == 1:
+        y_offset = 55
+    
+    for line in title_wrapped:
+        draw.text((60, y_offset), line, font=title_font, fill=title_color)
+        y_offset += 50
+        
     # --- Draw Bullets ---
-    safe_bullet_chars = int((width - 140) / 18)
+    y_offset = 240
+    safe_bullet_chars = int((width - 140) / 15)  # Adjusted for smaller font
     for bullet in bullets:
-        if y_offset > height - 130:
+        if y_offset > height - 120:  # Restrict to avoid footer overlap
             break
         bullet_wrapped = textwrap.wrap(f"\u2022 {bullet}", width=safe_bullet_chars)
         for i, line in enumerate(bullet_wrapped):
-            if y_offset > height - 130:
+            if y_offset > height - 120:
                 break
             indent = 0 if i == 0 else 20
             draw.text((100 + indent, y_offset), line, font=content_font, fill=text_color)
-            y_offset += 45
-        y_offset += 20  # Add extra spacing between bullets
-        
+            y_offset += 40  # Less vertical spacing for smaller font
+        y_offset += 20
+
     img.save(output_path)
 
 
@@ -775,7 +803,8 @@ def create_subtitle_clip(text: str, start: float, duration: float, width: int = 
     draw = ImageDraw.Draw(img)
 
     # Semi-transparent black bar background
-    draw.rectangle([0, 0, width, bar_height], fill=(0, 0, 0, 180))
+    # Removed the background bar to make subtitles display directly on the slide
+    # draw.rectangle([0, 0, width, bar_height], fill=(0, 0, 0, 180))
 
     # Font
     try:
@@ -798,15 +827,19 @@ def create_subtitle_clip(text: str, start: float, duration: float, width: int = 
         except Exception:
             tw = len(line) * 15
         x = (width - tw) // 2
-        # Draw shadow for readability
-        draw.text((x + 1, y + 1), line, font=font, fill=(0, 0, 0, 255))
-        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+        # Draw white outline for readability of black text on potentially busy/colored backgrounds
+        draw.text((x + 2, y + 2), line, font=font, fill=(255, 255, 255, 255))
+        draw.text((x - 1, y - 1), line, font=font, fill=(255, 255, 255, 255))
+        draw.text((x + 1, y - 1), line, font=font, fill=(255, 255, 255, 255))
+        draw.text((x - 1, y + 1), line, font=font, fill=(255, 255, 255, 255))
+        draw.text((x + 1, y + 1), line, font=font, fill=(255, 255, 255, 255))
+        # Main text in SOLID BLACK as requested
+        draw.text((x, y), line, font=font, fill=(0, 0, 0, 255))
         y += line_h
 
-    # Convert RGBA PIL to RGB numpy array (MoviePy needs RGB)
-    img_rgb = Image.new("RGB", (width, bar_height), (0, 0, 0))
-    img_rgb.paste(img, mask=img.split()[3])  # use alpha as mask
-    frame = np.array(img_rgb)
+    # Convert RGBA PIL directly to a numpy array
+    # MoviePy's ImageClip will automatically read the alpha channel as a mask
+    frame = np.array(img)
 
     bottom_margin = 80  # lift subtitles just above the bottom edge but avoid overlapping slide content
     clip = MpImageClip(frame).with_duration(duration).with_start(start).with_position((0, height - bar_height - bottom_margin))
